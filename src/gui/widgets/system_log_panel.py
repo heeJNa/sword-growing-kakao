@@ -199,13 +199,15 @@ class SystemLogPanel(ttk.Frame):
         self._handler = TextHandler(self.log_text)
         self._handler.setLevel(logging.DEBUG)
 
-        # Add handler to root logger
+        # Add handler to root logger and ensure level allows DEBUG
         root_logger = logging.getLogger()
+        root_logger.setLevel(logging.DEBUG)  # Ensure root logger allows all levels
         root_logger.addHandler(self._handler)
 
         # Also add to our app loggers
-        for logger_name in ["src", "__main__"]:
+        for logger_name in ["src", "__main__", "src.core", "src.automation", "src.gui"]:
             logger = logging.getLogger(logger_name)
+            logger.setLevel(logging.DEBUG)
             if self._handler not in logger.handlers:
                 logger.addHandler(self._handler)
 

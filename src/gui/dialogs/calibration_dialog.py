@@ -195,6 +195,9 @@ class CalibrationDialog:
 
     def _set_coords(self, target: str, x: int, y: int) -> None:
         """Set coordinates in entry fields"""
+        # Convert to int (pynput returns floats on macOS Retina displays)
+        x = int(x)
+        y = int(y)
         logger.debug(f"좌표 설정: target={target}, x={x}, y={y}")
 
         if target == "output":
