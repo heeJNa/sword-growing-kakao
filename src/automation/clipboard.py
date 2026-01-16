@@ -2,7 +2,11 @@
 import time
 import pyperclip
 import pyautogui
+from pynput.keyboard import Controller as KeyboardController, Key
 from ..config.coordinates import Coordinates, DEFAULT_COORDINATES
+
+# pynput keyboard controller for direct typing
+_keyboard = KeyboardController()
 
 
 def copy_to_clipboard(text: str) -> None:
@@ -59,44 +63,27 @@ def copy_chat_output(coords: Coordinates = None) -> str:
 
 def type_to_chat(text: str, coords: Coordinates = None) -> None:
     """
-    Type text into chat input using clipboard.
-
-    This is necessary for Korean text input.
+    Type text into chat input using pynput direct typing.
 
     Args:
-        text: Text to type
+        text: Text to type (supports Korean)
         coords: Coordinates configuration (uses default if None)
     """
     if coords is None:
         coords = DEFAULT_COORDINATES
 
-    # Save current clipboard
-    try:
-        old_clipboard = pyperclip.paste()
-    except Exception:
-        old_clipboard = ""
-
     # Click on chat input area
     pyautogui.click(coords.chat_input_x, coords.chat_input_y)
     time.sleep(0.1)
 
-    # Copy text to clipboard
-    pyperclip.copy(text)
-    time.sleep(0.05)
-
-    # Paste (Ctrl+V)
-    pyautogui.hotkey('ctrl', 'v')
-    time.sleep(0.05)
-
-    # Press Enter to send
-    pyautogui.press('enter')
+    # Type text directly using pynput (supports Korean)
+    _keyboard.type(text)
     time.sleep(0.1)
 
-    # Restore clipboard
-    try:
-        pyperclip.copy(old_clipboard)
-    except Exception:
-        pass
+    # Press Enter to send
+    _keyboard.press(Key.enter)
+    _keyboard.release(Key.enter)
+    time.sleep(0.1)
 
 
 def clear_clipboard() -> None:
