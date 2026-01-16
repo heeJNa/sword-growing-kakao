@@ -83,5 +83,5 @@ class Coordinates:
             return cls()
 
 
-# Default coordinates instance
-DEFAULT_COORDINATES = Coordinates()
+# Default coordinates instance - load from file if exists
+DEFAULT_COORDINATES = Coordinates.load()

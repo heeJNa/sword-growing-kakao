@@ -57,7 +57,10 @@ def _mac_keystroke(key: str, modifier: str = None) -> None:
         script = f'tell application "System Events" to keystroke "{key}" using {modifier} down'
     else:
         script = f'tell application "System Events" to keystroke "{key}"'
-    subprocess.run(['osascript', '-e', script], capture_output=True)
+    try:
+        subprocess.run(['osascript', '-e', script], capture_output=True, timeout=5)
+    except subprocess.TimeoutExpired:
+        print(f"AppleScript keystroke timeout: {key}")
 
 
 def _mac_key_code(code: int, modifier: str = None) -> None:
@@ -69,7 +72,10 @@ def _mac_key_code(code: int, modifier: str = None) -> None:
         script = f'tell application "System Events" to key code {code} using {modifier} down'
     else:
         script = f'tell application "System Events" to key code {code}'
-    subprocess.run(['osascript', '-e', script], capture_output=True)
+    try:
+        subprocess.run(['osascript', '-e', script], capture_output=True, timeout=5)
+    except subprocess.TimeoutExpired:
+        print(f"AppleScript key code timeout: {code}")
 
 
 # macOS key code mapping
@@ -102,7 +108,10 @@ def type_text(text: str, interval: float = 0.05) -> None:
         # Escape special characters for AppleScript
         escaped_text = text.replace('\\', '\\\\').replace('"', '\\"')
         script = f'tell application "System Events" to keystroke "{escaped_text}"'
-        subprocess.run(['osascript', '-e', script], capture_output=True)
+        try:
+            subprocess.run(['osascript', '-e', script], capture_output=True, timeout=5)
+        except subprocess.TimeoutExpired:
+            print(f"AppleScript type_text timeout: {text}")
     else:
         _keyboard.type(text)
 

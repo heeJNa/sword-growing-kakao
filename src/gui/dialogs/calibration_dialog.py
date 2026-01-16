@@ -32,7 +32,7 @@ class CalibrationDialog:
         # Create dialog window
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("좌표 설정")
-        self.dialog.geometry("500x500")
+        self.dialog.geometry("580x520")
         self.dialog.resizable(False, False)
         self.dialog.transient(parent)
         self.dialog.grab_set()
@@ -75,8 +75,8 @@ class CalibrationDialog:
             coords_frame,
             text="클릭으로 캡처",
             command=lambda: self._start_capture("output"),
-            width=12
-        ).grid(row=0, column=5, padx=10)
+            width=14
+        ).grid(row=0, column=5, padx=(20, 10))
 
         # Chat input coordinates
         ttk.Label(coords_frame, text="채팅 입력 영역 (클릭 위치):").grid(row=1, column=0, sticky="w", pady=5)
@@ -97,8 +97,8 @@ class CalibrationDialog:
             coords_frame,
             text="클릭으로 캡처",
             command=lambda: self._start_capture("input"),
-            width=12
-        ).grid(row=1, column=5, padx=10)
+            width=14
+        ).grid(row=1, column=5, padx=(20, 10))
 
         # Current position display
         pos_frame = ttk.LabelFrame(self.dialog, text="현재 마우스 위치 (실시간)", padding=10)

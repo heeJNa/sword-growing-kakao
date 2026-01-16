@@ -28,7 +28,10 @@ def _mac_keystroke(key: str, modifier: str = None) -> None:
         script = f'tell application "System Events" to keystroke "{key}" using {modifier} down'
     else:
         script = f'tell application "System Events" to keystroke "{key}"'
-    subprocess.run(['osascript', '-e', script], capture_output=True)
+    try:
+        subprocess.run(['osascript', '-e', script], capture_output=True, timeout=5)
+    except subprocess.TimeoutExpired:
+        print(f"AppleScript keystroke timeout: {key}")
 
 
 def _mac_key_code(code: int, modifier: str = None) -> None:
@@ -40,7 +43,10 @@ def _mac_key_code(code: int, modifier: str = None) -> None:
         script = f'tell application "System Events" to key code {code} using {modifier} down'
     else:
         script = f'tell application "System Events" to key code {code}'
-    subprocess.run(['osascript', '-e', script], capture_output=True)
+    try:
+        subprocess.run(['osascript', '-e', script], capture_output=True, timeout=5)
+    except subprocess.TimeoutExpired:
+        print(f"AppleScript key code timeout: {code}")
 
 
 def _mac_type_text(text: str) -> None:

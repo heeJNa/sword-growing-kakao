@@ -1,11 +1,22 @@
 """Bar chart showing level probability distribution"""
+import sys
 import tkinter as tk
 from typing import Dict
 import numpy as np
 
 try:
+    import matplotlib
     from matplotlib.figure import Figure
     from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+    # Set Korean font for macOS
+    if sys.platform == "darwin":
+        matplotlib.rcParams['font.family'] = 'AppleGothic'
+    else:
+        # Windows Korean font
+        matplotlib.rcParams['font.family'] = 'Malgun Gothic'
+    matplotlib.rcParams['axes.unicode_minus'] = False
+
     MATPLOTLIB_AVAILABLE = True
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
