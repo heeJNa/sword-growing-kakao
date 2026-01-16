@@ -159,7 +159,41 @@ class MacroApp:
         self.status_panel.pack(fill="x", pady=(0, 10))
 
         self.stats_panel = StatsPanel(left_frame)
-        self.stats_panel.pack(fill="x")
+        self.stats_panel.pack(fill="x", pady=(0, 10))
+
+        # 대시보드 컨트롤 버튼
+        dashboard_control = ttk.LabelFrame(left_frame, text="매크로 제어", padding=10)
+        dashboard_control.pack(fill="x", pady=(0, 10))
+
+        # 버튼 프레임
+        btn_frame = ttk.Frame(dashboard_control)
+        btn_frame.pack(fill="x")
+
+        self.dash_start_btn = ttk.Button(
+            btn_frame,
+            text="▶ 시작",
+            command=self._on_start,
+            width=10
+        )
+        self.dash_start_btn.pack(side="left", padx=2, expand=True, fill="x")
+
+        self.dash_pause_btn = ttk.Button(
+            btn_frame,
+            text="⏸ 일시정지",
+            command=self._on_pause,
+            width=10,
+            state="disabled"
+        )
+        self.dash_pause_btn.pack(side="left", padx=2, expand=True, fill="x")
+
+        self.dash_stop_btn = ttk.Button(
+            btn_frame,
+            text="■ 정지",
+            command=self._on_stop,
+            width=10,
+            state="disabled"
+        )
+        self.dash_stop_btn.pack(side="left", padx=2, expand=True, fill="x")
 
         # Right panel - charts
         right_frame = ttk.Frame(top_frame)
@@ -288,6 +322,24 @@ class MacroApp:
         self.status_panel.update_macro_state(status)
         self.control_panel.set_running(status == MacroState.RUNNING)
         self.control_panel.set_paused(status == MacroState.PAUSED)
+
+        # 대시보드 버튼 상태 업데이트
+        self._update_dashboard_buttons(status)
+
+    def _update_dashboard_buttons(self, status: MacroState) -> None:
+        """Update dashboard control buttons based on macro state"""
+        if status == MacroState.RUNNING:
+            self.dash_start_btn.config(state="disabled")
+            self.dash_pause_btn.config(state="normal", text="⏸ 일시정지")
+            self.dash_stop_btn.config(state="normal")
+        elif status == MacroState.PAUSED:
+            self.dash_start_btn.config(state="disabled")
+            self.dash_pause_btn.config(state="normal", text="▶ 재개")
+            self.dash_stop_btn.config(state="normal")
+        else:  # STOPPED, IDLE, ERROR
+            self.dash_start_btn.config(state="normal")
+            self.dash_pause_btn.config(state="disabled", text="⏸ 일시정지")
+            self.dash_stop_btn.config(state="disabled")
 
     def _on_error(self, error: Exception) -> None:
         """Handle error"""
