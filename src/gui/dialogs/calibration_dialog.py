@@ -32,7 +32,7 @@ class CalibrationDialog:
         # Create dialog window
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("좌표 설정")
-        self.dialog.geometry("580x520")
+        self.dialog.geometry("580x650")
         self.dialog.resizable(False, False)
         self.dialog.transient(parent)
         self.dialog.grab_set()
