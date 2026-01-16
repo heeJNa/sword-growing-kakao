@@ -544,6 +544,13 @@ ESC - 긴급 정지
                 return
             self.macro.stop()
 
+            # Wait for macro thread to actually stop (max 2 seconds)
+            import time
+            for _ in range(20):  # 20 * 0.1s = 2s max
+                if not self.macro.is_running():
+                    break
+                time.sleep(0.1)
+
         logger.info("프로그램 종료")
 
         # Release single instance lock
@@ -558,6 +565,16 @@ ESC - 긴급 정지
         # Stop system tray
         if self.system_tray:
             self.system_tray.stop()
+
+        # Destroy the system log panel first to stop the logging handler
+        # This prevents background threads from trying to log during shutdown
+        try:
+            self.system_log_panel.destroy()
+        except Exception:
+            pass
+
+        # Small delay to let any pending after() callbacks complete
+        self.root.update()
 
         # Close window
         self.root.destroy()

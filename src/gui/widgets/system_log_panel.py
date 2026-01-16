@@ -10,11 +10,12 @@ from ...utils.logger import LOG_DIR, get_log_file
 
 
 class TextHandler(logging.Handler):
-    """Logging handler that writes to a Tkinter Text widget"""
+    """Logging handler that writes to a Tkinter Text widget (thread-safe)"""
 
     def __init__(self, text_widget: tk.Text):
         super().__init__()
         self.text_widget = text_widget
+        self._shutdown = False  # Flag to prevent access during shutdown
 
         # Formatter
         self.setFormatter(logging.Formatter(
@@ -22,38 +23,66 @@ class TextHandler(logging.Handler):
             datefmt="%H:%M:%S"
         ))
 
+    def shutdown(self):
+        """Signal that the handler should stop accepting logs"""
+        self._shutdown = True
+
     def emit(self, record):
-        msg = self.format(record)
+        # Don't process if shutdown
+        if self._shutdown:
+            return
 
-        def append():
-            self.text_widget.configure(state="normal")
-            self.text_widget.insert(tk.END, msg + "\n")
+        try:
+            msg = self.format(record)
 
-            # Auto-scroll to bottom
-            self.text_widget.see(tk.END)
+            def append():
+                # Double-check shutdown flag and widget validity
+                if self._shutdown:
+                    return
+                try:
+                    # Check if widget still exists
+                    if not self.text_widget.winfo_exists():
+                        return
 
-            # Apply tag based on level
-            line_start = self.text_widget.index(f"end-2l linestart")
-            line_end = self.text_widget.index(f"end-1l lineend")
+                    self.text_widget.configure(state="normal")
+                    self.text_widget.insert(tk.END, msg + "\n")
 
-            if record.levelno >= logging.ERROR:
-                self.text_widget.tag_add("error", line_start, line_end)
-            elif record.levelno >= logging.WARNING:
-                self.text_widget.tag_add("warning", line_start, line_end)
-            elif record.levelno >= logging.INFO:
-                self.text_widget.tag_add("info", line_start, line_end)
-            else:
-                self.text_widget.tag_add("debug", line_start, line_end)
+                    # Auto-scroll to bottom
+                    self.text_widget.see(tk.END)
 
-            # Limit to 1000 lines
-            line_count = int(self.text_widget.index("end-1c").split(".")[0])
-            if line_count > 1000:
-                self.text_widget.delete("1.0", f"{line_count - 1000}.0")
+                    # Apply tag based on level
+                    line_start = self.text_widget.index(f"end-2l linestart")
+                    line_end = self.text_widget.index(f"end-1l lineend")
 
-            self.text_widget.configure(state="disabled")
+                    if record.levelno >= logging.ERROR:
+                        self.text_widget.tag_add("error", line_start, line_end)
+                    elif record.levelno >= logging.WARNING:
+                        self.text_widget.tag_add("warning", line_start, line_end)
+                    elif record.levelno >= logging.INFO:
+                        self.text_widget.tag_add("info", line_start, line_end)
+                    else:
+                        self.text_widget.tag_add("debug", line_start, line_end)
 
-        # Schedule in main thread
-        self.text_widget.after(0, append)
+                    # Limit to 1000 lines
+                    line_count = int(self.text_widget.index("end-1c").split(".")[0])
+                    if line_count > 1000:
+                        self.text_widget.delete("1.0", f"{line_count - 1000}.0")
+
+                    self.text_widget.configure(state="disabled")
+                except tk.TclError:
+                    # Widget destroyed, ignore
+                    pass
+
+            # Schedule in main thread (only if not shutdown)
+            if not self._shutdown:
+                try:
+                    self.text_widget.after(0, append)
+                except tk.TclError:
+                    # Widget destroyed, ignore
+                    pass
+        except Exception:
+            # Ignore any errors during emit
+            pass
 
 
 class SystemLogPanel(ttk.Frame):
@@ -308,6 +337,19 @@ class SystemLogPanel(ttk.Frame):
     def destroy(self) -> None:
         """Clean up when widget is destroyed"""
         if self._handler:
+            # Signal handler to stop accepting logs FIRST
+            self._handler.shutdown()
+
+            # Remove handler from all loggers
             root_logger = logging.getLogger()
             root_logger.removeHandler(self._handler)
+
+            for logger_name in ["src", "__main__", "src.core", "src.automation", "src.gui"]:
+                logger = logging.getLogger(logger_name)
+                try:
+                    logger.removeHandler(self._handler)
+                except ValueError:
+                    pass
+
+            self._handler = None
         super().destroy()
