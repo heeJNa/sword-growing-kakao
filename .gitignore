@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.python-version
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+ENV/
+
+# PyInstaller builds
+build/
+dist/
+*.manifest
+*.spec
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Sisyphus session files
+.sisyphus/
+
+# Logs
+*.log
+logs/
+
+# Local config (user-specific)
+coordinates.json
+
+# Jupyter
+.ipynb_checkpoints/
+
+# mypy / type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Distribution / packaging
+*.egg-info/
+*.egg
+MANIFEST
