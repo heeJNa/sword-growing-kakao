@@ -39,28 +39,31 @@ scripts\build.bat
 2. **카카오톡 실행**: 매크로 시작 전 카카오톡 채팅방 열어야 함
 
 ### macOS
-1. **접근성 권한 필수**: pynput이 마우스/키보드를 제어하려면 접근성 권한 필요
+1. **접근성 권한 필수**: pynput (마우스) 및 AppleScript (키보드)를 사용하려면 접근성 권한 필요
    ```
-   시스템 설정 → 개인정보 보호 및 보안 → 접근성
+   시스템 설정 → 개인정보 보호 및 보안 → 손쉬운 사용
    → Terminal (또는 사용하는 터미널 앱) 체크
    ```
 2. **카카오톡 Mac 버전**: 매크로 시작 전 카카오톡 채팅방 열어야 함
 3. **Cmd 키 사용**: Mac에서는 Ctrl 대신 Cmd 키가 자동으로 사용됨
+4. **단축키 미지원**: macOS에서는 F1-F5 단축키가 작동하지 않음 (pynput keyboard thread 제약)
+   - GUI 버튼으로만 제어 가능
 
 ## Architecture
 
 ```
 MacroRunner (core/macro.py) - 메인 오케스트레이터
     │
-    ├── pynput (automation/) - 크로스플랫폼 마우스/키보드 자동화
+    ├── pynput (automation/) - 크로스플랫폼 마우스 자동화
+    │   └── AppleScript - macOS 키보드 자동화 (thread-safe)
     │
-    ├── HotkeyListener (automation/hotkeys.py) - F1-F5 단축키 감지
+    ├── HotkeyListener (automation/hotkeys.py) - F1-F5 단축키 감지 (Windows만)
     │
     ├── Parser (core/parser.py) - 채팅 메시지 → EnhanceResult (SUCCESS/MAINTAIN/DESTROY)
     │
     ├── Strategy (strategy/heuristic.py) - GameState → Action (ENHANCE/SELL/WAIT)
     │
-    ├── Actions (core/actions.py) - enhance(), sell() → pynput
+    ├── Actions (core/actions.py) - enhance(), sell() → automation layer
     │
     └── StatsCollector (stats/collector.py) - 레벨별 통계, 세션 기록
 ```
@@ -69,9 +72,10 @@ MacroRunner (core/macro.py) - 메인 오케스트레이터
 
 ## Key Design Decisions
 
-- **pynput 사용**: 크로스플랫폼 마우스/키보드 자동화 (Mac/Windows 모두 지원)
+- **pynput 사용**: 크로스플랫폼 마우스 자동화 (Mac/Windows 모두 지원)
+- **macOS 키보드**: AppleScript 사용 (pynput keyboard는 background thread에서 TSM 크래시 발생)
+- **Windows 키보드**: pynput.keyboard.type()으로 한글 직접 입력
 - **플랫폼 자동 감지**: Mac에서는 Cmd, Windows에서는 Ctrl 키 자동 사용
-- **직접 타이핑**: 클립보드 붙여넣기 대신 pynput.keyboard.type()으로 한글 직접 입력
 - **쓰레드 분리**: 매크로 루프는 백그라운드 쓰레드, GUI는 메인 쓰레드 (tkinter 제약)
 
 ## Config Files

@@ -1,7 +1,15 @@
 """Hotkey listener for keyboard shortcuts"""
+import sys
 import threading
 from typing import Callable, Dict, Optional
-from pynput import keyboard
+
+# Platform detection
+_IS_MAC = sys.platform == "darwin"
+
+# Only import pynput keyboard on non-Mac platforms
+# macOS has thread safety issues with pynput keyboard in background threads
+if not _IS_MAC:
+    from pynput import keyboard
 
 
 class HotkeyListener:
@@ -63,6 +71,12 @@ class HotkeyListener:
             return
 
         self._running = True
+
+        # Skip pynput keyboard listener on macOS due to thread safety issues
+        if _IS_MAC:
+            print("Hotkeys disabled on macOS (pynput keyboard not supported in background threads)")
+            return
+
         self._listener = keyboard.Listener(on_press=self._on_press)
         self._listener.start()
 

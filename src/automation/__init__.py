@@ -1,4 +1,4 @@
-"""Automation modules for keyboard, mouse, and clipboard control (pyautogui)"""
+"""Automation modules for keyboard, mouse, and clipboard control (pynput/AppleScript)"""
 from .keyboard import type_text, press_key, hotkey
 from .mouse import click_at, move_to
 from .clipboard import (
