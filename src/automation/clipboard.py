@@ -1,125 +1,208 @@
-"""Clipboard operations for reading chat and typing Korean"""
+"""Clipboard operations for reading chat and typing Korean (Win32 API)"""
 import time
-import pyperclip
-import pyautogui
+from typing import Optional
 from ..config.coordinates import Coordinates, DEFAULT_COORDINATES
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Import win32 automation
+try:
+    from .win32_automation import (
+        Win32Window,
+        WindowFinder,
+        copy_to_clipboard,
+        paste_from_clipboard,
+        is_win32_available,
+        VK_RETURN,
+    )
+    HAS_WIN32 = is_win32_available()
+except ImportError:
+    HAS_WIN32 = False
+    logger.error("win32 모듈을 불러올 수 없습니다. pywin32를 설치하세요: pip install pywin32")
 
-def copy_to_clipboard(text: str) -> None:
+# Global window reference
+_kakao_window: Optional[Win32Window] = None
+
+
+class KakaoWindowNotFoundError(Exception):
+    """KakaoTalk 창을 찾을 수 없을 때 발생하는 예외"""
+    pass
+
+
+def set_kakao_window(window: Optional[Win32Window]) -> None:
+    """Set the KakaoTalk window handle"""
+    global _kakao_window
+    _kakao_window = window
+    if window:
+        logger.info(f"KakaoTalk 창 설정됨: '{window.title}'")
+
+
+def get_kakao_window() -> Optional[Win32Window]:
+    """Get the KakaoTalk window handle"""
+    global _kakao_window
+    return _kakao_window
+
+
+def find_and_set_kakao_window() -> Win32Window:
     """
-    Copy text to clipboard.
-
-    Args:
-        text: Text to copy
-    """
-    pyperclip.copy(text)
-
-
-def paste_from_clipboard() -> str:
-    """
-    Get text from clipboard.
+    Find and set KakaoTalk window automatically.
 
     Returns:
-        Clipboard contents
+        Win32Window instance
+
+    Raises:
+        KakaoWindowNotFoundError: If KakaoTalk window is not found
     """
-    return pyperclip.paste()
+    if not HAS_WIN32:
+        raise KakaoWindowNotFoundError(
+            "win32 모듈을 사용할 수 없습니다. "
+            "Windows에서 pywin32를 설치하세요: pip install pywin32"
+        )
+
+    window = WindowFinder.find_kakao_chat()
+    if window:
+        set_kakao_window(window)
+        return window
+
+    # 창을 찾지 못한 경우 열린 창 목록 로그
+    windows = WindowFinder.list_windows()
+    logger.error("KakaoTalk 창을 찾을 수 없습니다.")
+    logger.info("현재 열린 창 목록:")
+    for hwnd, title in windows[:10]:  # 상위 10개만
+        logger.info(f"  - {title}")
+
+    raise KakaoWindowNotFoundError(
+        "KakaoTalk 창을 찾을 수 없습니다.\n"
+        "카카오톡을 실행하고 채팅방을 열어주세요."
+    )
+
+
+def _ensure_window() -> Win32Window:
+    """Ensure KakaoTalk window is available"""
+    global _kakao_window
+
+    if _kakao_window and _kakao_window.is_valid:
+        return _kakao_window
+
+    # Try to find window again
+    return find_and_set_kakao_window()
 
 
 def copy_chat_output(coords: Coordinates = None) -> str:
     """
     Copy chat output from KakaoTalk window.
 
-    This clicks on the chat output area, selects all text,
-    copies it, and returns the contents.
-
     Args:
         coords: Coordinates configuration (uses default if None)
 
     Returns:
         Chat text from clipboard
+
+    Raises:
+        KakaoWindowNotFoundError: If KakaoTalk window is not found
     """
     if coords is None:
         coords = DEFAULT_COORDINATES
 
-    logger.debug(f"copy_chat_output 시작: 좌표=({coords.chat_output_x}, {coords.chat_output_y})")
+    window = _ensure_window()
 
-    # Click on chat output area
-    logger.debug(f"클릭: ({coords.chat_output_x}, {coords.chat_output_y})")
-    pyautogui.click(coords.chat_output_x, coords.chat_output_y)
-    time.sleep(0.1)
+    try:
+        # Convert screen coordinates to client coordinates
+        client_x, client_y = window.screen_to_client(
+            coords.chat_output_x, coords.chat_output_y
+        )
 
-    # Select all (Ctrl+A)
-    logger.debug("Ctrl+A (전체 선택)")
-    pyautogui.hotkey('ctrl', 'a')
-    time.sleep(0.1)
+        logger.debug(f"채팅 출력 클릭: ({client_x}, {client_y})")
 
-    # Copy (Ctrl+C)
-    logger.debug("Ctrl+C (복사)")
-    pyautogui.hotkey('ctrl', 'c')
-    time.sleep(0.1)
+        # Click on chat output area
+        window.click(client_x, client_y)
+        time.sleep(0.1)
 
-    # Get clipboard contents
-    result = pyperclip.paste()
-    logger.debug(f"클립보드 내용 길이: {len(result)}자")
-    return result
+        # Select all (Ctrl+A)
+        logger.debug("Ctrl+A (전체 선택)")
+        window.send_ctrl_key('a')
+        time.sleep(0.1)
+
+        # Copy (Ctrl+C)
+        logger.debug("Ctrl+C (복사)")
+        window.send_ctrl_key('c')
+        time.sleep(0.1)
+
+        # Get clipboard contents
+        result = paste_from_clipboard()
+        logger.debug(f"클립보드 내용 길이: {len(result)}자")
+        return result
+
+    except Exception as e:
+        logger.error(f"copy_chat_output 실패: {e}")
+        raise
 
 
 def type_to_chat(text: str, coords: Coordinates = None) -> None:
     """
     Type text into chat input using clipboard.
 
-    This is necessary for Korean text input.
-
     Args:
         text: Text to type
         coords: Coordinates configuration (uses default if None)
+
+    Raises:
+        KakaoWindowNotFoundError: If KakaoTalk window is not found
     """
     if coords is None:
         coords = DEFAULT_COORDINATES
 
-    logger.debug(f"type_to_chat 시작: text='{text}', 좌표=({coords.chat_input_x}, {coords.chat_input_y})")
+    window = _ensure_window()
 
-    # Save current clipboard
+    logger.debug(f"type_to_chat: '{text}'")
+
     try:
-        old_clipboard = pyperclip.paste()
-        logger.debug(f"기존 클립보드 백업 (길이: {len(old_clipboard)})")
-    except Exception as e:
+        # Save current clipboard
         old_clipboard = ""
-        logger.warning(f"클립보드 백업 실패: {e}")
+        try:
+            old_clipboard = paste_from_clipboard()
+        except Exception:
+            pass
 
-    # Click on chat input area
-    logger.debug(f"입력창 클릭: ({coords.chat_input_x}, {coords.chat_input_y})")
-    pyautogui.click(coords.chat_input_x, coords.chat_input_y)
-    time.sleep(0.1)
+        # Convert screen coordinates to client coordinates
+        client_x, client_y = window.screen_to_client(
+            coords.chat_input_x, coords.chat_input_y
+        )
 
-    # Copy text to clipboard
-    logger.debug(f"클립보드에 텍스트 복사: '{text}'")
-    pyperclip.copy(text)
-    time.sleep(0.05)
+        logger.debug(f"입력창 클릭: ({client_x}, {client_y})")
 
-    # Paste (Ctrl+V)
-    logger.debug("Ctrl+V (붙여넣기)")
-    pyautogui.hotkey('ctrl', 'v')
-    time.sleep(0.05)
+        # Click on chat input area
+        window.click(client_x, client_y)
+        time.sleep(0.1)
 
-    # Press Enter to send
-    logger.debug("Enter 키 전송")
-    pyautogui.press('enter')
-    time.sleep(0.1)
+        # Copy text to clipboard
+        copy_to_clipboard(text)
+        time.sleep(0.05)
 
-    # Restore clipboard
-    try:
-        pyperclip.copy(old_clipboard)
-        logger.debug("클립보드 복원 완료")
+        # Paste (Ctrl+V)
+        logger.debug("Ctrl+V (붙여넣기)")
+        window.send_ctrl_key('v')
+        time.sleep(0.05)
+
+        # Press Enter to send
+        logger.debug("Enter 키 전송")
+        window.send_key(VK_RETURN)
+        time.sleep(0.1)
+
+        # Restore clipboard
+        try:
+            copy_to_clipboard(old_clipboard)
+        except Exception:
+            pass
+
+        logger.debug("type_to_chat 완료")
+
     except Exception as e:
-        logger.warning(f"클립보드 복원 실패: {e}")
-
-    logger.debug("type_to_chat 완료")
+        logger.error(f"type_to_chat 실패: {e}")
+        raise
 
 
 def clear_clipboard() -> None:
     """Clear clipboard contents"""
-    pyperclip.copy("")
+    copy_to_clipboard("")
