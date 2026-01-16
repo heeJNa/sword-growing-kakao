@@ -305,26 +305,36 @@ class MacroApp:
     # === Callbacks ===
 
     def _on_state_change(self, state: GameState) -> None:
-        """Handle game state change"""
+        """Handle game state change (called from background thread)"""
         logger.debug(f"상태 변경: level={state.level}, gold={state.gold}")
+        # GUI 업데이트는 메인 스레드에서 실행
+        self.root.after(0, lambda: self.status_panel.update_state(state))
 
     def _on_result(self, result: EnhanceResult) -> None:
-        """Handle enhancement result"""
+        """Handle enhancement result (called from background thread)"""
         logger.info(f"강화 결과: {result.value}")
-        if self.stats_collector.session:
-            history = self.stats_collector.get_recent_history(1)
-            if history:
-                self.log_panel.add_record(history[0])
+
+        # GUI 업데이트는 메인 스레드에서 실행
+        def update_ui():
+            if self.stats_collector.session:
+                history = self.stats_collector.get_recent_history(1)
+                if history:
+                    self.log_panel.add_record(history[0])
+
+        self.root.after(0, update_ui)
 
     def _on_status_change(self, status: MacroState) -> None:
-        """Handle macro status change"""
+        """Handle macro status change (called from background thread)"""
         logger.info(f"매크로 상태: {status.value}")
-        self.status_panel.update_macro_state(status)
-        self.control_panel.set_running(status == MacroState.RUNNING)
-        self.control_panel.set_paused(status == MacroState.PAUSED)
 
-        # 대시보드 버튼 상태 업데이트
-        self._update_dashboard_buttons(status)
+        # GUI 업데이트는 메인 스레드에서 실행
+        def update_ui():
+            self.status_panel.update_macro_state(status)
+            self.control_panel.set_running(status == MacroState.RUNNING)
+            self.control_panel.set_paused(status == MacroState.PAUSED)
+            self._update_dashboard_buttons(status)
+
+        self.root.after(0, update_ui)
 
     def _update_dashboard_buttons(self, status: MacroState) -> None:
         """Update dashboard control buttons based on macro state"""
