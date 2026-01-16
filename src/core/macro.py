@@ -11,7 +11,6 @@ from ..strategy.heuristic import HeuristicStrategy
 from ..stats.collector import StatsCollector
 from ..config.settings import Settings, DEFAULT_SETTINGS
 from ..config.coordinates import Coordinates, DEFAULT_COORDINATES
-from ..automation.clipboard import find_and_set_kakao_window, KakaoWindowNotFoundError
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -302,23 +301,11 @@ class MacroRunner:
 
         Returns:
             True if started successfully
-
-        Raises:
-            KakaoWindowNotFoundError: If KakaoTalk window is not found
         """
         logger.info("start_auto() 호출됨")
 
         if self._thread and self._thread.is_alive():
             logger.warning("이미 실행 중인 스레드 존재, 시작 취소")
-            return False
-
-        # Find KakaoTalk window (required for operation)
-        try:
-            window = find_and_set_kakao_window()
-            logger.info(f"KakaoTalk 창 발견: '{window.title}'")
-        except KakaoWindowNotFoundError as e:
-            logger.error(f"KakaoTalk 창을 찾을 수 없습니다: {e}")
-            self._notify_error(e)
             return False
 
         self._stop_event.clear()

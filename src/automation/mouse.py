@@ -1,56 +1,24 @@
-"""Mouse automation using Win32 API (RDP compatible)"""
+"""Mouse automation using pyautogui"""
 import time
-from typing import Tuple
-
-# Import Win32 functions
-try:
-    import win32api
-    import win32con
-    HAS_WIN32 = True
-except ImportError:
-    HAS_WIN32 = False
+import pyautogui
 
 
-def get_position() -> Tuple[int, int]:
-    """
-    Get current mouse position.
-
-    Returns:
-        Tuple of (x, y) coordinates
-    """
-    if not HAS_WIN32:
-        raise RuntimeError("Win32 API not available. Install pywin32: pip install pywin32")
-    return win32api.GetCursorPos()
+# Configure pyautogui
+pyautogui.PAUSE = 0.1
+pyautogui.FAILSAFE = True
 
 
 def click_at(x: int, y: int, clicks: int = 1, interval: float = 0.1) -> None:
     """
-    Click at specified coordinates using Win32 API.
-    Note: For clicking inside a specific window, use Win32Window.click() instead.
+    Click at specified coordinates.
 
     Args:
-        x: X coordinate (screen)
-        y: Y coordinate (screen)
+        x: X coordinate
+        y: Y coordinate
         clicks: Number of clicks
         interval: Interval between clicks
     """
-    if not HAS_WIN32:
-        raise RuntimeError("Win32 API not available. Install pywin32: pip install pywin32")
-
-    for i in range(clicks):
-        # Move cursor to position
-        win32api.SetCursorPos((x, y))
-        time.sleep(0.01)
-
-        # Mouse down
-        win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, x, y, 0, 0)
-        time.sleep(0.01)
-
-        # Mouse up
-        win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, x, y, 0, 0)
-
-        if i < clicks - 1:
-            time.sleep(interval)
+    pyautogui.click(x, y, clicks=clicks, interval=interval)
 
 
 def move_to(x: int, y: int, duration: float = 0.1) -> None:
@@ -60,11 +28,9 @@ def move_to(x: int, y: int, duration: float = 0.1) -> None:
     Args:
         x: X coordinate
         y: Y coordinate
-        duration: Time to move (ignored, instant move)
+        duration: Time to move (0 for instant)
     """
-    if not HAS_WIN32:
-        raise RuntimeError("Win32 API not available. Install pywin32: pip install pywin32")
-    win32api.SetCursorPos((x, y))
+    pyautogui.moveTo(x, y, duration=duration)
 
 
 def double_click(x: int, y: int) -> None:
@@ -75,7 +41,7 @@ def double_click(x: int, y: int) -> None:
         x: X coordinate
         y: Y coordinate
     """
-    click_at(x, y, clicks=2, interval=0.05)
+    pyautogui.doubleClick(x, y)
 
 
 def right_click(x: int, y: int) -> None:
@@ -86,14 +52,17 @@ def right_click(x: int, y: int) -> None:
         x: X coordinate
         y: Y coordinate
     """
-    if not HAS_WIN32:
-        raise RuntimeError("Win32 API not available. Install pywin32: pip install pywin32")
+    pyautogui.rightClick(x, y)
 
-    win32api.SetCursorPos((x, y))
-    time.sleep(0.01)
-    win32api.mouse_event(win32con.MOUSEEVENTF_RIGHTDOWN, x, y, 0, 0)
-    time.sleep(0.01)
-    win32api.mouse_event(win32con.MOUSEEVENTF_RIGHTUP, x, y, 0, 0)
+
+def get_position() -> tuple:
+    """
+    Get current mouse position.
+
+    Returns:
+        Tuple of (x, y) coordinates
+    """
+    return pyautogui.position()
 
 
 def scroll(clicks: int, x: int = None, y: int = None) -> None:
@@ -105,15 +74,7 @@ def scroll(clicks: int, x: int = None, y: int = None) -> None:
         x: Optional X coordinate
         y: Optional Y coordinate
     """
-    if not HAS_WIN32:
-        raise RuntimeError("Win32 API not available. Install pywin32: pip install pywin32")
-
-    if x is not None and y is not None:
-        win32api.SetCursorPos((x, y))
-        time.sleep(0.01)
-
-    # WHEEL_DELTA is 120
-    win32api.mouse_event(win32con.MOUSEEVENTF_WHEEL, 0, 0, clicks * 120, 0)
+    pyautogui.scroll(clicks, x, y)
 
 
 def drag_to(x: int, y: int, duration: float = 0.5) -> None:
@@ -123,24 +84,9 @@ def drag_to(x: int, y: int, duration: float = 0.5) -> None:
     Args:
         x: Target X coordinate
         y: Target Y coordinate
-        duration: Time to drag (ignored, instant drag)
+        duration: Time to drag
     """
-    if not HAS_WIN32:
-        raise RuntimeError("Win32 API not available. Install pywin32: pip install pywin32")
-
-    # Get current position
-    curr_x, curr_y = win32api.GetCursorPos()
-
-    # Mouse down at current position
-    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, curr_x, curr_y, 0, 0)
-    time.sleep(0.05)
-
-    # Move to target
-    win32api.SetCursorPos((x, y))
-    time.sleep(0.05)
-
-    # Mouse up at target
-    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, x, y, 0, 0)
+    pyautogui.dragTo(x, y, duration=duration)
 
 
 def safe_click(x: int, y: int, delay_before: float = 0.05, delay_after: float = 0.05) -> None:
@@ -154,7 +100,7 @@ def safe_click(x: int, y: int, delay_before: float = 0.05, delay_after: float = 
         delay_after: Delay after click
     """
     time.sleep(delay_before)
-    move_to(x, y)
+    move_to(x, y, duration=0.1)
     time.sleep(0.05)
-    click_at(x, y)
+    pyautogui.click()
     time.sleep(delay_after)
