@@ -23,42 +23,20 @@ def check_mac_accessibility():
     import tkinter as tk
     from tkinter import messagebox
 
-    # Try to use pynput - it will fail silently if no permissions
-    try:
-        from pynput.mouse import Controller as Mouse
-        from pynput.keyboard import Controller as Keyboard
-
-        mouse = Mouse()
-        kb = Keyboard()
-
-        # Test mouse position (this works without permissions)
-        _ = mouse.position
-
-        # Show info dialog about accessibility
-        root = tk.Tk()
-        root.withdraw()
-        messagebox.showinfo(
-            "Mac 접근성 권한 안내",
-            "이 앱은 마우스/키보드 제어를 위해 접근성 권한이 필요합니다.\n\n"
-            "권한 설정 방법:\n"
-            "1. 시스템 설정 → 개인정보 보호 및 보안 → 접근성\n"
-            "2. Terminal (또는 사용 중인 터미널 앱) 체크\n\n"
-            "권한이 없으면 마우스 클릭과 키보드 입력이 작동하지 않습니다."
-        )
-        root.destroy()
-        return True
-
-    except Exception as e:
-        root = tk.Tk()
-        root.withdraw()
-        messagebox.showerror(
-            "접근성 권한 오류",
-            f"pynput 초기화 실패: {e}\n\n"
-            "시스템 설정 → 개인정보 보호 및 보안 → 접근성에서\n"
-            "터미널 앱에 권한을 부여하세요."
-        )
-        root.destroy()
-        return False
+    # Show info dialog about accessibility (AppleScript also needs permissions)
+    root = tk.Tk()
+    root.withdraw()
+    messagebox.showinfo(
+        "Mac 손쉬운 사용 권한 안내",
+        "이 앱은 마우스/키보드 제어를 위해 손쉬운 사용 권한이 필요합니다.\n\n"
+        "권한 설정 방법:\n"
+        "1. 시스템 설정 → 개인정보 보호 및 보안 → 손쉬운 사용\n"
+        "2. Visual Studio Code (또는 사용 중인 터미널 앱) 토글 ON\n"
+        "3. 권한 부여 후 앱 재시작 필요\n\n"
+        "권한이 없으면 마우스 클릭과 키보드 입력이 작동하지 않습니다."
+    )
+    root.destroy()
+    return True
 
 
 def main():
