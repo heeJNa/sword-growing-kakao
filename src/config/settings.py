@@ -16,14 +16,10 @@ class Settings:
     response_timeout: float = 5.0
 
     # Strategy settings
-    level_threshold: int = 11
-    max_fails: int = 2
-    min_gold: int = 10000
-    max_level: int = 20
-
-    # Auto mode settings
-    auto_sell_on_threshold: bool = True
-    auto_sell_on_max_fails: bool = True
+    target_level: int = 15  # Target enhancement level to reach
+    sell_on_target: bool = False  # Sell when target reached (usually False)
+    pause_on_target: bool = True  # Pause when target reached
+    min_gold: int = 1000  # Minimum gold before selling
 
     # UI settings
     gui_update_interval: int = 500  # milliseconds
@@ -40,12 +36,10 @@ class Settings:
             "click_delay": self.click_delay,
             "type_delay": self.type_delay,
             "response_timeout": self.response_timeout,
-            "level_threshold": self.level_threshold,
-            "max_fails": self.max_fails,
+            "target_level": self.target_level,
+            "sell_on_target": self.sell_on_target,
+            "pause_on_target": self.pause_on_target,
             "min_gold": self.min_gold,
-            "max_level": self.max_level,
-            "auto_sell_on_threshold": self.auto_sell_on_threshold,
-            "auto_sell_on_max_fails": self.auto_sell_on_max_fails,
             "gui_update_interval": self.gui_update_interval,
             "chart_update_interval": self.chart_update_interval,
         }
@@ -58,12 +52,10 @@ class Settings:
             click_delay=data.get("click_delay", 0.1),
             type_delay=data.get("type_delay", 0.05),
             response_timeout=data.get("response_timeout", 5.0),
-            level_threshold=data.get("level_threshold", 11),
-            max_fails=data.get("max_fails", 2),
-            min_gold=data.get("min_gold", 10000),
-            max_level=data.get("max_level", 20),
-            auto_sell_on_threshold=data.get("auto_sell_on_threshold", True),
-            auto_sell_on_max_fails=data.get("auto_sell_on_max_fails", True),
+            target_level=data.get("target_level", 15),
+            sell_on_target=data.get("sell_on_target", False),
+            pause_on_target=data.get("pause_on_target", True),
+            min_gold=data.get("min_gold", 1000),
             gui_update_interval=data.get("gui_update_interval", 500),
             chart_update_interval=data.get("chart_update_interval", 1000),
         )

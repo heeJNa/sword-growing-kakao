@@ -22,6 +22,13 @@ from ..stats.collector import StatsCollector
 from ..stats.models import SessionStats
 from ..automation.hotkeys import HotkeyListener
 
+# Try to import system tray (optional dependency)
+try:
+    from .system_tray import SystemTray
+    HAS_SYSTEM_TRAY = True
+except ImportError:
+    HAS_SYSTEM_TRAY = False
+
 
 class MacroApp:
     """Main GUI Application for the sword enhancement macro"""
@@ -66,11 +73,14 @@ class MacroApp:
         # Start hotkey listener
         self.hotkey_listener.start()
 
+        # Setup system tray (minimize to tray on close)
+        self._setup_system_tray()
+
         # Start GUI update loop
         self._start_update_loop()
 
-        # Handle window close
-        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        # Handle window close (minimize to tray)
+        self.root.protocol("WM_DELETE_WINDOW", self._on_window_close)
 
     def _setup_ui(self) -> None:
         """Setup main UI layout"""
@@ -133,6 +143,22 @@ class MacroApp:
         # Menu bar
         self._setup_menu()
 
+    def _setup_system_tray(self) -> None:
+        """Setup system tray for minimize to tray"""
+        self.system_tray = None
+        if HAS_SYSTEM_TRAY:
+            try:
+                self.system_tray = SystemTray(
+                    on_show=self._show_window,
+                    on_quit=self._on_quit,
+                    on_start=self._on_start,
+                    on_stop=self._on_stop,
+                )
+                self.system_tray.start()
+            except Exception as e:
+                print(f"System tray init failed: {e}")
+                self.system_tray = None
+
     def _setup_menu(self) -> None:
         """Setup menu bar"""
         menubar = tk.Menu(self.root)
@@ -143,7 +169,10 @@ class MacroApp:
         menubar.add_cascade(label="파일", menu=file_menu)
         file_menu.add_command(label="통계 내보내기", command=self._on_export)
         file_menu.add_separator()
-        file_menu.add_command(label="종료", command=self._on_close)
+        if HAS_SYSTEM_TRAY:
+            file_menu.add_command(label="트레이로 최소화", command=self._minimize_to_tray)
+            file_menu.add_separator()
+        file_menu.add_command(label="종료", command=self._on_quit)
 
         # Settings menu
         settings_menu = tk.Menu(menubar, tearoff=0)
@@ -344,8 +373,32 @@ ESC - 긴급 정지
 """
         messagebox.showinfo("정보", about_text)
 
-    def _on_close(self) -> None:
-        """Handle window close"""
+    def _on_window_close(self) -> None:
+        """Handle window close button - minimize to tray if available"""
+        if self.system_tray:
+            # Minimize to tray instead of closing
+            self._minimize_to_tray()
+        else:
+            # No system tray, ask to quit
+            self._on_quit()
+
+    def _minimize_to_tray(self) -> None:
+        """Minimize window to system tray"""
+        if self.system_tray:
+            self.root.withdraw()  # Hide window
+            self.system_tray.notify(
+                "검키우기 매크로",
+                "백그라운드에서 실행 중입니다. 트레이 아이콘을 클릭하여 열 수 있습니다."
+            )
+
+    def _show_window(self) -> None:
+        """Show window from system tray"""
+        self.root.deiconify()  # Show window
+        self.root.lift()  # Bring to front
+        self.root.focus_force()  # Focus
+
+    def _on_quit(self) -> None:
+        """Handle actual quit"""
         if self.macro.is_running():
             if not messagebox.askyesno("종료", "매크로가 실행 중입니다. 종료하시겠습니까?"):
                 return
@@ -356,6 +409,10 @@ ESC - 긴급 정지
 
         # Stop hotkey listener
         self.hotkey_listener.stop()
+
+        # Stop system tray
+        if self.system_tray:
+            self.system_tray.stop()
 
         # Close window
         self.root.destroy()
