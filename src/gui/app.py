@@ -9,6 +9,7 @@ from .widgets.status_panel import StatusPanel
 from .widgets.stats_panel import StatsPanel
 from .widgets.log_panel import LogPanel
 from .widgets.control_panel import ControlPanel
+from .widgets.system_log_panel import SystemLogPanel
 from .charts.bar_chart import LevelProbabilityChart
 from .charts.line_chart import GoldHistoryChart
 from .dialogs.settings_dialog import SettingsDialog
@@ -21,6 +22,10 @@ from ..config.coordinates import Coordinates
 from ..stats.collector import StatsCollector
 from ..stats.models import SessionStats
 from ..automation.hotkeys import HotkeyListener
+from ..utils.logger import get_logger
+
+# Logger for this module
+logger = get_logger(__name__)
 
 # Try to import system tray (optional dependency)
 try:
@@ -34,9 +39,12 @@ class MacroApp:
     """Main GUI Application for the sword enhancement macro"""
 
     def __init__(self):
+        logger.info("검키우기 매크로 시작")
+
         # Load configuration
         self.settings = Settings.load()
         self.coords = Coordinates.load()
+        logger.debug(f"설정 로드 완료: target_level={self.settings.target_level}")
 
         # Initialize components
         self.stats_collector = StatsCollector()
@@ -53,8 +61,8 @@ class MacroApp:
         # Create main window
         self.root = tk.Tk()
         self.root.title("검키우기 매크로 v1.0")
-        self.root.geometry("900x700")
-        self.root.minsize(800, 600)
+        self.root.geometry("950x750")
+        self.root.minsize(900, 700)
 
         # Set icon if exists
         try:
@@ -72,6 +80,7 @@ class MacroApp:
 
         # Start hotkey listener
         self.hotkey_listener.start()
+        logger.info("단축키 리스너 시작됨")
 
         # Setup system tray (minimize to tray on close)
         self._setup_system_tray()
@@ -83,13 +92,48 @@ class MacroApp:
         self.root.protocol("WM_DELETE_WINDOW", self._on_window_close)
 
     def _setup_ui(self) -> None:
-        """Setup main UI layout"""
-        # Main container
-        main_frame = ttk.Frame(self.root, padding=10)
-        main_frame.pack(fill="both", expand=True)
+        """Setup main UI layout with tabs"""
+        # Main notebook (tabs)
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(fill="both", expand=True, padx=5, pady=5)
 
+        # Tab 1: Dashboard
+        dashboard_frame = ttk.Frame(self.notebook, padding=10)
+        self.notebook.add(dashboard_frame, text="📊 대시보드")
+        self._setup_dashboard(dashboard_frame)
+
+        # Tab 2: System Log
+        log_frame = ttk.Frame(self.notebook, padding=10)
+        self.notebook.add(log_frame, text="📝 시스템 로그")
+        self.system_log_panel = SystemLogPanel(log_frame)
+        self.system_log_panel.pack(fill="both", expand=True)
+
+        # Control panel (always visible at bottom)
+        control_frame = ttk.Frame(self.root)
+        control_frame.pack(fill="x", padx=10, pady=(0, 10))
+
+        self.control_panel = ControlPanel(control_frame)
+        self.control_panel.pack()
+
+        # Setup control callbacks
+        self.control_panel.set_callbacks(
+            on_start=self._on_start,
+            on_pause=self._on_pause,
+            on_stop=self._on_stop,
+            on_settings=self._on_settings,
+            on_export=self._on_export,
+            on_enhance=self._on_manual_enhance,
+            on_sell=self._on_manual_sell,
+            on_calibrate=self._on_calibration,
+        )
+
+        # Menu bar
+        self._setup_menu()
+
+    def _setup_dashboard(self, parent) -> None:
+        """Setup dashboard tab content"""
         # Top section - status and charts
-        top_frame = ttk.Frame(main_frame)
+        top_frame = ttk.Frame(parent)
         top_frame.pack(fill="both", expand=True)
 
         # Left panel - status and stats
@@ -117,31 +161,12 @@ class MacroApp:
         chart_frame2.pack(fill="both", expand=True, pady=(5, 0))
         self.line_chart = GoldHistoryChart(chart_frame2)
 
-        # Bottom section - log
-        bottom_frame = ttk.Frame(main_frame)
+        # Bottom section - enhancement log
+        bottom_frame = ttk.Frame(parent)
         bottom_frame.pack(fill="x", pady=(10, 0))
 
         self.log_panel = LogPanel(bottom_frame)
         self.log_panel.pack(fill="x")
-
-        # Control panel
-        control_frame = ttk.Frame(main_frame)
-        control_frame.pack(fill="x", pady=(10, 0))
-
-        self.control_panel = ControlPanel(control_frame)
-        self.control_panel.pack()
-
-        # Setup control callbacks
-        self.control_panel.set_callbacks(
-            on_start=self._on_start,
-            on_pause=self._on_pause,
-            on_stop=self._on_stop,
-            on_settings=self._on_settings,
-            on_export=self._on_export,
-        )
-
-        # Menu bar
-        self._setup_menu()
 
     def _setup_system_tray(self) -> None:
         """Setup system tray for minimize to tray"""
@@ -155,8 +180,9 @@ class MacroApp:
                     on_stop=self._on_stop,
                 )
                 self.system_tray.start()
+                logger.info("System Tray 초기화 완료")
             except Exception as e:
-                print(f"System tray init failed: {e}")
+                logger.warning(f"System Tray 초기화 실패: {e}")
                 self.system_tray = None
 
     def _setup_menu(self) -> None:
@@ -177,7 +203,7 @@ class MacroApp:
         # Settings menu
         settings_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="설정", menu=settings_menu)
-        settings_menu.add_command(label="일반 설정", command=self._on_settings)
+        settings_menu.add_command(label="전략 설정", command=self._on_settings)
         settings_menu.add_command(label="좌표 설정", command=self._on_calibration)
 
         # Help menu
@@ -232,11 +258,11 @@ class MacroApp:
 
     def _on_state_change(self, state: GameState) -> None:
         """Handle game state change"""
-        # GUI updates are handled in _update_gui
-        pass
+        logger.debug(f"상태 변경: level={state.level}, gold={state.gold}")
 
     def _on_result(self, result: EnhanceResult) -> None:
         """Handle enhancement result"""
+        logger.info(f"강화 결과: {result.value}")
         if self.stats_collector.session:
             history = self.stats_collector.get_recent_history(1)
             if history:
@@ -244,12 +270,14 @@ class MacroApp:
 
     def _on_status_change(self, status: MacroState) -> None:
         """Handle macro status change"""
+        logger.info(f"매크로 상태: {status.value}")
         self.status_panel.update_macro_state(status)
         self.control_panel.set_running(status == MacroState.RUNNING)
         self.control_panel.set_paused(status == MacroState.PAUSED)
 
     def _on_error(self, error: Exception) -> None:
         """Handle error"""
+        logger.error(f"오류 발생: {error}")
         self.root.after(0, lambda: messagebox.showerror("오류", str(error)))
 
     # === Control Actions ===
@@ -257,21 +285,38 @@ class MacroApp:
     def _on_start(self) -> None:
         """Start auto mode"""
         if not self.macro.is_running():
+            logger.info("자동 모드 시작")
             self.macro.start_auto()
 
     def _on_pause(self) -> None:
         """Pause/Resume auto mode"""
         if self.macro.is_paused():
+            logger.info("자동 모드 재개")
             self.macro.resume()
         else:
+            logger.info("자동 모드 일시정지")
             self.macro.pause()
 
     def _on_stop(self) -> None:
         """Stop auto mode"""
+        logger.info("자동 모드 정지")
         self.macro.stop()
+
+    def _on_manual_enhance(self) -> None:
+        """Manual enhance"""
+        if not self.macro.is_running():
+            logger.info("수동 강화 실행")
+            self.macro.manual_enhance()
+
+    def _on_manual_sell(self) -> None:
+        """Manual sell"""
+        if not self.macro.is_running():
+            logger.info("수동 판매 실행")
+            self.macro.manual_sell()
 
     def _on_settings(self) -> None:
         """Open settings dialog"""
+        logger.debug("설정 다이얼로그 열기")
         SettingsDialog(
             self.root,
             self.settings,
@@ -280,6 +325,7 @@ class MacroApp:
 
     def _on_calibration(self) -> None:
         """Open calibration dialog"""
+        logger.debug("좌표 설정 다이얼로그 열기")
         CalibrationDialog(
             self.root,
             self.coords,
@@ -301,29 +347,30 @@ class MacroApp:
         if path:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(self.stats_collector.session.to_dict(), f, indent=2, ensure_ascii=False)
+            logger.info(f"통계 내보내기 완료: {path}")
             messagebox.showinfo("내보내기", f"통계가 저장되었습니다:\n{path}")
 
     def _apply_settings(self, settings: Settings) -> None:
         """Apply new settings"""
         self.settings = settings
         self.macro.update_settings(settings)
+        logger.info(f"설정 적용: target_level={settings.target_level}")
 
     def _apply_coords(self, coords: Coordinates) -> None:
         """Apply new coordinates"""
         self.coords = coords
         self.macro.update_coordinates(coords)
+        logger.info(f"좌표 적용: output=({coords.chat_output_x}, {coords.chat_output_y})")
 
     # === Hotkey Handlers ===
 
     def _hotkey_enhance(self) -> None:
         """F1: Manual enhance"""
-        if not self.macro.is_running():
-            self.macro.manual_enhance()
+        self._on_manual_enhance()
 
     def _hotkey_sell(self) -> None:
         """F2: Manual sell"""
-        if not self.macro.is_running():
-            self.macro.manual_sell()
+        self._on_manual_sell()
 
     def _hotkey_start(self) -> None:
         """F3: Start auto mode"""
@@ -339,6 +386,7 @@ class MacroApp:
 
     def _hotkey_emergency_stop(self) -> None:
         """ESC: Emergency stop"""
+        logger.warning("긴급 정지!")
         self.macro.stop()
         self.root.after(0, lambda: messagebox.showwarning("긴급 정지", "매크로가 긴급 정지되었습니다."))
 
@@ -376,16 +424,15 @@ ESC - 긴급 정지
     def _on_window_close(self) -> None:
         """Handle window close button - minimize to tray if available"""
         if self.system_tray:
-            # Minimize to tray instead of closing
             self._minimize_to_tray()
         else:
-            # No system tray, ask to quit
             self._on_quit()
 
     def _minimize_to_tray(self) -> None:
         """Minimize window to system tray"""
         if self.system_tray:
-            self.root.withdraw()  # Hide window
+            logger.info("트레이로 최소화")
+            self.root.withdraw()
             self.system_tray.notify(
                 "검키우기 매크로",
                 "백그라운드에서 실행 중입니다. 트레이 아이콘을 클릭하여 열 수 있습니다."
@@ -393,9 +440,10 @@ ESC - 긴급 정지
 
     def _show_window(self) -> None:
         """Show window from system tray"""
-        self.root.deiconify()  # Show window
-        self.root.lift()  # Bring to front
-        self.root.focus_force()  # Focus
+        logger.info("창 복원")
+        self.root.deiconify()
+        self.root.lift()
+        self.root.focus_force()
 
     def _on_quit(self) -> None:
         """Handle actual quit"""
@@ -403,6 +451,8 @@ ESC - 긴급 정지
             if not messagebox.askyesno("종료", "매크로가 실행 중입니다. 종료하시겠습니까?"):
                 return
             self.macro.stop()
+
+        logger.info("프로그램 종료")
 
         # End session
         self.stats_collector.end_session()
@@ -419,6 +469,7 @@ ESC - 긴급 정지
 
     def run(self) -> None:
         """Run the application"""
+        logger.info("GUI 메인 루프 시작")
         self.root.mainloop()
 
 
