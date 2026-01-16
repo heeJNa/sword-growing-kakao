@@ -22,11 +22,11 @@
 
 | 기준 | Python | Node.js |
 |------|--------|---------|
-| **GUI 자동화 라이브러리** | pyautogui, pynput (성숙함) | robotjs (제한적) |
+| **GUI 자동화 라이브러리** | pywin32 (Win32 API), pynput (성숙함) | robotjs (제한적) |
 | **강화학습 생태계** | stable-baselines3, gymnasium (풍부) | 거의 없음 |
 | **참고 레포지토리 호환성** | 직접 활용 가능 | 재작성 필요 |
-| **Windows 지원** | 우수 (Win32 API 연동 가능) | 보통 |
-| **클립보드 처리** | pyperclip (안정적) | 추가 설정 필요 |
+| **Windows 지원** | 우수 (Win32 API 연동, RDP 호환) | 보통 |
+| **클립보드 처리** | win32clipboard (RDP 호환) | 추가 설정 필요 |
 | **데이터 분석** | pandas, numpy (표준) | 제한적 |
 
 **결론**: Python 3.11+ 선택 (참고 레포지토리와 동일)
@@ -37,10 +37,9 @@
 
 #### 핵심 의존성
 ```
-# 자동화
-pyautogui>=0.9.54      # 마우스/키보드 제어
+# 자동화 (Win32 API - RDP 호환)
+pywin32>=306           # Win32 API (마우스/키보드/클립보드)
 pynput>=1.7.6          # 입력 감지 및 단축키 처리
-pyperclip>=1.8.2       # 클립보드 조작
 
 # 데이터 처리
 pandas>=2.0.0          # 데이터 분석/CSV 처리
@@ -72,7 +71,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # 프로젝트 초기화
 uv init
-uv add pyautogui pynput pyperclip pandas
+uv add pywin32 pynput pandas numpy matplotlib
 ```
 
 ---
@@ -1022,35 +1021,34 @@ echo   압축: release\%RELEASE_NAME%.zip
 │  카카오톡    │   (미사용)    │
 └──────────────┴──────────────┘
 
-- pyautogui는 절대 좌표 사용 (Windows에서도 동일)
-- Windows 디스플레이 배율이 100%가 아니면 좌표 계산 오류 발생
-- 카카오톡 창 위치를 고정하고 캘리브레이션 실행
+- Win32 API는 화면 좌표를 클라이언트 좌표로 변환하여 사용
+- 창 핸들(hwnd) 기반으로 카카오톡 창 자동 탐색
+- RDP 환경에서도 PostMessage/SendMessage로 정상 동작
 ```
 
 #### Windows 디스플레이 배율 주의사항
 
 ```
-⚠️ 중요: Windows 디스플레이 배율 설정
+ℹ️ Win32 API 좌표 변환
 
-배율 100%가 아닌 경우 (예: 125%, 150%):
-- pyautogui 좌표가 실제 화면과 다르게 인식됨
-- 반드시 100%로 설정하거나, 배율 보정 로직 추가 필요
+Win32 API의 screen_to_client() 함수가 자동으로 좌표 변환 처리:
+- 화면 좌표(screen coordinates)를 클라이언트 좌표(client coordinates)로 변환
+- 창의 위치와 관계없이 올바른 좌표로 클릭
+- 디스플레이 배율 영향 최소화
 
-확인 방법:
-설정 > 시스템 > 디스플레이 > 배율 및 레이아웃
-→ "100% (권장)" 선택
+단, 캘리브레이션 시 좌표 설정은 화면 좌표 기준으로 진행
 ```
 
-#### 백그라운드 실행: 현재 불가능
+#### 백그라운드 실행: RDP 환경 지원
 
-**UI 자동화 방식의 근본적 한계:**
+**Win32 API 사용으로 RDP 환경 지원:**
 
-| 현상 | 원인 |
+| 기능 | Win32 API 장점 |
 |------|------|
-| 마우스 커서가 실제로 움직임 | pyautogui가 OS 수준에서 입력 이벤트 생성 |
-| 사용자 작업 시 매크로 방해 | 같은 마우스/키보드 공유 |
-| 매크로가 사용자 작업 방해 | 포커스 강제 이동 |
-| 창 위치 변경 시 오작동 | 절대 좌표 기반 |
+| RDP 원격 접속 | PostMessage로 창에 직접 메시지 전송 |
+| 창 핸들 기반 | 카카오톡 창을 자동으로 찾아서 제어 |
+| 좌표 변환 | screen_to_client()로 정확한 좌표 계산 |
+| 창 위치 무관 | hwnd 기반으로 창 위치 변경에 강함 |
 
 #### 동시 작업을 위한 대안
 
