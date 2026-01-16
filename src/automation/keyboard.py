@@ -1,11 +1,15 @@
 """Keyboard automation using pynput"""
+import sys
 import time
 from pynput.keyboard import Controller as KeyboardController, Key
 
 # pynput keyboard controller
 _keyboard = KeyboardController()
 
-# Key name mapping
+# Platform detection
+_IS_MAC = sys.platform == "darwin"
+
+# Key name mapping (ctrl maps to cmd on Mac for shortcuts)
 _KEY_MAP = {
     'enter': Key.enter,
     'return': Key.enter,
@@ -21,7 +25,8 @@ _KEY_MAP = {
     'right': Key.right,
     'home': Key.home,
     'end': Key.end,
-    'ctrl': Key.ctrl,
+    'ctrl': Key.cmd if _IS_MAC else Key.ctrl,  # Cmd on Mac, Ctrl on Windows
+    'cmd': Key.cmd,
     'alt': Key.alt,
     'shift': Key.shift,
 }
@@ -92,17 +97,17 @@ def type_korean(text: str) -> None:
 
 
 def select_all() -> None:
-    """Select all text (Ctrl+A)"""
+    """Select all text (Cmd+A on Mac, Ctrl+A on Windows)"""
     hotkey('ctrl', 'a')
 
 
 def copy() -> None:
-    """Copy selected text (Ctrl+C)"""
+    """Copy selected text (Cmd+C on Mac, Ctrl+C on Windows)"""
     hotkey('ctrl', 'c')
 
 
 def paste() -> None:
-    """Paste from clipboard (Ctrl+V)"""
+    """Paste from clipboard (Cmd+V on Mac, Ctrl+V on Windows)"""
     hotkey('ctrl', 'v')
 
 

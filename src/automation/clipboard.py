@@ -1,4 +1,5 @@
 """Clipboard operations for reading chat and typing Korean"""
+import sys
 import time
 import pyperclip
 from pynput.keyboard import Controller as KeyboardController, Key
@@ -8,6 +9,9 @@ from ..config.coordinates import Coordinates, DEFAULT_COORDINATES
 # pynput controllers for direct input
 _keyboard = KeyboardController()
 _mouse = MouseController()
+
+# Platform-specific modifier key (Cmd on Mac, Ctrl on Windows/Linux)
+_MODIFIER_KEY = Key.cmd if sys.platform == "darwin" else Key.ctrl
 
 
 def copy_to_clipboard(text: str) -> None:
@@ -52,14 +56,14 @@ def copy_chat_output(coords: Coordinates = None) -> str:
     _mouse.click(Button.left)
     time.sleep(0.1)
 
-    # Select all (Ctrl+A)
-    with _keyboard.pressed(Key.ctrl):
+    # Select all (Cmd+A on Mac, Ctrl+A on Windows)
+    with _keyboard.pressed(_MODIFIER_KEY):
         _keyboard.press('a')
         _keyboard.release('a')
     time.sleep(0.1)
 
-    # Copy (Ctrl+C)
-    with _keyboard.pressed(Key.ctrl):
+    # Copy (Cmd+C on Mac, Ctrl+C on Windows)
+    with _keyboard.pressed(_MODIFIER_KEY):
         _keyboard.press('c')
         _keyboard.release('c')
     time.sleep(0.1)

@@ -4,14 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-카카오톡 "검키우기" 챗봇 게임 강화 매크로. Win32 API를 사용한 UI 자동화 기반으로, 채팅 메시지를 파싱하여 게임 상태를 추적하고 전략에 따라 강화/판매를 자동 실행합니다.
+카카오톡 "검키우기" 챗봇 게임 강화 매크로. pynput을 사용한 UI 자동화 기반으로, 채팅 메시지를 파싱하여 게임 상태를 추적하고 전략에 따라 강화/판매를 자동 실행합니다.
 
-**대상 플랫폼**: Windows 10/11 (RDP 원격 접속 지원)
+**대상 플랫폼**: Windows 10/11, macOS
 
 ## Commands
 
 ```bash
-# 의존성 설치 (Windows)
+# 의존성 설치
 pip install -r requirements.txt
 
 # GUI 실행
@@ -32,25 +32,27 @@ pytest tests/test_parser.py -v  # 단일 테스트
 scripts\build.bat
 ```
 
-## 필수 요구사항
+## 플랫폼별 요구사항
 
-1. **Windows 10/11**: Win32 API 사용으로 Windows 전용
-2. **pywin32**: RDP 환경에서도 동작하는 Win32 API 지원
-3. **카카오톡 실행**: 매크로 시작 전 카카오톡 채팅방 열어야 함
+### Windows
+1. **Windows 10/11**: pynput 마우스/키보드 자동화
+2. **카카오톡 실행**: 매크로 시작 전 카카오톡 채팅방 열어야 함
 
-```bash
-# pywin32 설치 (자동 설치됨, 수동 설치 시)
-pip install pywin32
-```
+### macOS
+1. **접근성 권한 필수**: pynput이 마우스/키보드를 제어하려면 접근성 권한 필요
+   ```
+   시스템 설정 → 개인정보 보호 및 보안 → 접근성
+   → Terminal (또는 사용하는 터미널 앱) 체크
+   ```
+2. **카카오톡 Mac 버전**: 매크로 시작 전 카카오톡 채팅방 열어야 함
+3. **Cmd 키 사용**: Mac에서는 Ctrl 대신 Cmd 키가 자동으로 사용됨
 
 ## Architecture
 
 ```
 MacroRunner (core/macro.py) - 메인 오케스트레이터
     │
-    ├── Win32Window (automation/win32_automation.py) - 창 핸들 기반 자동화
-    │
-    ├── WindowFinder - 카카오톡 창 자동 탐색
+    ├── pynput (automation/) - 크로스플랫폼 마우스/키보드 자동화
     │
     ├── HotkeyListener (automation/hotkeys.py) - F1-F5 단축키 감지
     │
@@ -58,20 +60,19 @@ MacroRunner (core/macro.py) - 메인 오케스트레이터
     │
     ├── Strategy (strategy/heuristic.py) - GameState → Action (ENHANCE/SELL/WAIT)
     │
-    ├── Actions (core/actions.py) - enhance(), sell() → Win32 API
+    ├── Actions (core/actions.py) - enhance(), sell() → pynput
     │
     └── StatsCollector (stats/collector.py) - 레벨별 통계, 세션 기록
 ```
 
-**데이터 흐름**: 창 탐색 → 채팅 복사(PostMessage) → 정규식 파싱 → 상태 업데이트 → 전략 결정 → 클립보드 입력(SendMessage) → 반복
+**데이터 흐름**: 채팅창 클릭 → Cmd/Ctrl+A+C → 클립보드 복사 → 정규식 파싱 → 상태 업데이트 → 전략 결정 → 입력창 클릭 → 타이핑 → Enter → 반복
 
 ## Key Design Decisions
 
-- **Win32 API 사용**: RDP 환경에서도 동작 (PostMessage/SendMessage로 창에 직접 메시지 전송)
-- **창 핸들 기반**: 화면 좌표를 클라이언트 좌표로 변환하여 창에 전송
-- **클립보드 방식 한글 입력**: win32clipboard API로 한글 텍스트 입력
+- **pynput 사용**: 크로스플랫폼 마우스/키보드 자동화 (Mac/Windows 모두 지원)
+- **플랫폼 자동 감지**: Mac에서는 Cmd, Windows에서는 Ctrl 키 자동 사용
+- **직접 타이핑**: 클립보드 붙여넣기 대신 pynput.keyboard.type()으로 한글 직접 입력
 - **쓰레드 분리**: 매크로 루프는 백그라운드 쓰레드, GUI는 메인 쓰레드 (tkinter 제약)
-- **자동 창 탐색**: "카카오톡", "KakaoTalk", "검키우기" 제목으로 창 자동 탐색
 
 ## Config Files
 
@@ -93,6 +94,5 @@ RESULT_PATTERNS = {
 
 ## 에러 처리
 
-- **KakaoWindowNotFoundError**: 카카오톡 창을 찾지 못할 때 발생
-  - 해결: 카카오톡 실행 후 채팅방 열기
-  - 로그에 현재 열린 창 목록 출력됨
+- **Mac 접근성 권한 오류**: pynput이 작동하지 않을 때
+  - 해결: 시스템 설정 → 개인정보 보호 및 보안 → 접근성에서 터미널 앱 권한 부여
