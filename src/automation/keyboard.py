@@ -1,23 +1,51 @@
-"""Keyboard automation using pyautogui"""
+"""Keyboard automation using pynput"""
 import time
-import pyautogui
+from pynput.keyboard import Controller as KeyboardController, Key
+
+# pynput keyboard controller
+_keyboard = KeyboardController()
+
+# Key name mapping
+_KEY_MAP = {
+    'enter': Key.enter,
+    'return': Key.enter,
+    'tab': Key.tab,
+    'space': Key.space,
+    'escape': Key.esc,
+    'esc': Key.esc,
+    'backspace': Key.backspace,
+    'delete': Key.delete,
+    'up': Key.up,
+    'down': Key.down,
+    'left': Key.left,
+    'right': Key.right,
+    'home': Key.home,
+    'end': Key.end,
+    'ctrl': Key.ctrl,
+    'alt': Key.alt,
+    'shift': Key.shift,
+}
 
 
-# Configure pyautogui
-pyautogui.PAUSE = 0.1
-pyautogui.FAILSAFE = True
+def _get_key(key: str):
+    """Get pynput Key from string"""
+    key_lower = key.lower()
+    if key_lower in _KEY_MAP:
+        return _KEY_MAP[key_lower]
+    if len(key) == 1:
+        return key
+    return key
 
 
 def type_text(text: str, interval: float = 0.05) -> None:
     """
-    Type text using keyboard.
-    Note: For Korean text, use clipboard method instead.
+    Type text using keyboard (supports Korean).
 
     Args:
-        text: Text to type (ASCII only)
-        interval: Delay between keystrokes
+        text: Text to type
+        interval: Delay between keystrokes (ignored, pynput handles it)
     """
-    pyautogui.write(text, interval=interval)
+    _keyboard.type(text)
 
 
 def press_key(key: str) -> None:
@@ -27,7 +55,9 @@ def press_key(key: str) -> None:
     Args:
         key: Key to press (e.g., 'enter', 'tab', 'space')
     """
-    pyautogui.press(key)
+    k = _get_key(key)
+    _keyboard.press(k)
+    _keyboard.release(k)
 
 
 def hotkey(*keys: str) -> None:
@@ -37,59 +67,45 @@ def hotkey(*keys: str) -> None:
     Args:
         keys: Keys to press together (e.g., 'ctrl', 'c')
     """
-    pyautogui.hotkey(*keys)
+    pressed = []
+    for key in keys:
+        k = _get_key(key)
+        _keyboard.press(k)
+        pressed.append(k)
+        time.sleep(0.01)
+
+    for k in reversed(pressed):
+        _keyboard.release(k)
+        time.sleep(0.01)
 
 
 def type_korean(text: str) -> None:
     """
-    Type Korean text using clipboard method.
-    This is necessary because pyautogui.write() doesn't support Korean.
+    Type Korean text directly using pynput.
 
     Args:
         text: Korean text to type
     """
-    import pyperclip
-
-    # Save current clipboard
-    try:
-        old_clipboard = pyperclip.paste()
-    except Exception:
-        old_clipboard = ""
-
-    # Copy text to clipboard
-    pyperclip.copy(text)
+    _keyboard.type(text)
     time.sleep(0.05)
-
-    # Paste using Ctrl+V (Windows)
-    pyautogui.hotkey('ctrl', 'v')
-    time.sleep(0.05)
-
-    # Press Enter to send
-    pyautogui.press('enter')
-
-    # Restore clipboard (optional)
-    try:
-        time.sleep(0.1)
-        pyperclip.copy(old_clipboard)
-    except Exception:
-        pass
+    press_key('enter')
 
 
 def select_all() -> None:
     """Select all text (Ctrl+A)"""
-    pyautogui.hotkey('ctrl', 'a')
+    hotkey('ctrl', 'a')
 
 
 def copy() -> None:
     """Copy selected text (Ctrl+C)"""
-    pyautogui.hotkey('ctrl', 'c')
+    hotkey('ctrl', 'c')
 
 
 def paste() -> None:
     """Paste from clipboard (Ctrl+V)"""
-    pyautogui.hotkey('ctrl', 'v')
+    hotkey('ctrl', 'v')
 
 
 def escape() -> None:
     """Press Escape key"""
-    pyautogui.press('escape')
+    press_key('escape')

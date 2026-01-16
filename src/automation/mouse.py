@@ -1,11 +1,9 @@
-"""Mouse automation using pyautogui"""
+"""Mouse automation using pynput"""
 import time
-import pyautogui
+from pynput.mouse import Controller as MouseController, Button
 
-
-# Configure pyautogui
-pyautogui.PAUSE = 0.1
-pyautogui.FAILSAFE = True
+# pynput mouse controller
+_mouse = MouseController()
 
 
 def click_at(x: int, y: int, clicks: int = 1, interval: float = 0.1) -> None:
@@ -18,7 +16,12 @@ def click_at(x: int, y: int, clicks: int = 1, interval: float = 0.1) -> None:
         clicks: Number of clicks
         interval: Interval between clicks
     """
-    pyautogui.click(x, y, clicks=clicks, interval=interval)
+    _mouse.position = (x, y)
+    time.sleep(0.05)
+    for i in range(clicks):
+        _mouse.click(Button.left)
+        if i < clicks - 1:
+            time.sleep(interval)
 
 
 def move_to(x: int, y: int, duration: float = 0.1) -> None:
@@ -28,9 +31,9 @@ def move_to(x: int, y: int, duration: float = 0.1) -> None:
     Args:
         x: X coordinate
         y: Y coordinate
-        duration: Time to move (0 for instant)
+        duration: Time to move (ignored, instant move)
     """
-    pyautogui.moveTo(x, y, duration=duration)
+    _mouse.position = (x, y)
 
 
 def double_click(x: int, y: int) -> None:
@@ -41,7 +44,9 @@ def double_click(x: int, y: int) -> None:
         x: X coordinate
         y: Y coordinate
     """
-    pyautogui.doubleClick(x, y)
+    _mouse.position = (x, y)
+    time.sleep(0.05)
+    _mouse.click(Button.left, 2)
 
 
 def right_click(x: int, y: int) -> None:
@@ -52,7 +57,9 @@ def right_click(x: int, y: int) -> None:
         x: X coordinate
         y: Y coordinate
     """
-    pyautogui.rightClick(x, y)
+    _mouse.position = (x, y)
+    time.sleep(0.05)
+    _mouse.click(Button.right)
 
 
 def get_position() -> tuple:
@@ -62,7 +69,7 @@ def get_position() -> tuple:
     Returns:
         Tuple of (x, y) coordinates
     """
-    return pyautogui.position()
+    return _mouse.position
 
 
 def scroll(clicks: int, x: int = None, y: int = None) -> None:
@@ -74,7 +81,10 @@ def scroll(clicks: int, x: int = None, y: int = None) -> None:
         x: Optional X coordinate
         y: Optional Y coordinate
     """
-    pyautogui.scroll(clicks, x, y)
+    if x is not None and y is not None:
+        _mouse.position = (x, y)
+        time.sleep(0.05)
+    _mouse.scroll(0, clicks)
 
 
 def drag_to(x: int, y: int, duration: float = 0.5) -> None:
@@ -84,9 +94,13 @@ def drag_to(x: int, y: int, duration: float = 0.5) -> None:
     Args:
         x: Target X coordinate
         y: Target Y coordinate
-        duration: Time to drag
+        duration: Time to drag (ignored)
     """
-    pyautogui.dragTo(x, y, duration=duration)
+    _mouse.press(Button.left)
+    time.sleep(0.05)
+    _mouse.position = (x, y)
+    time.sleep(0.05)
+    _mouse.release(Button.left)
 
 
 def safe_click(x: int, y: int, delay_before: float = 0.05, delay_after: float = 0.05) -> None:
@@ -100,7 +114,7 @@ def safe_click(x: int, y: int, delay_before: float = 0.05, delay_after: float = 
         delay_after: Delay after click
     """
     time.sleep(delay_before)
-    move_to(x, y, duration=0.1)
+    _mouse.position = (x, y)
     time.sleep(0.05)
-    pyautogui.click()
+    _mouse.click(Button.left)
     time.sleep(delay_after)

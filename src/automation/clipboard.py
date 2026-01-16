@@ -1,12 +1,13 @@
 """Clipboard operations for reading chat and typing Korean"""
 import time
 import pyperclip
-import pyautogui
 from pynput.keyboard import Controller as KeyboardController, Key
+from pynput.mouse import Controller as MouseController, Button
 from ..config.coordinates import Coordinates, DEFAULT_COORDINATES
 
-# pynput keyboard controller for direct typing
+# pynput controllers for direct input
 _keyboard = KeyboardController()
+_mouse = MouseController()
 
 
 def copy_to_clipboard(text: str) -> None:
@@ -46,15 +47,21 @@ def copy_chat_output(coords: Coordinates = None) -> str:
         coords = DEFAULT_COORDINATES
 
     # Click on chat output area
-    pyautogui.click(coords.chat_output_x, coords.chat_output_y)
+    _mouse.position = (coords.chat_output_x, coords.chat_output_y)
+    time.sleep(0.05)
+    _mouse.click(Button.left)
     time.sleep(0.1)
 
     # Select all (Ctrl+A)
-    pyautogui.hotkey('ctrl', 'a')
+    with _keyboard.pressed(Key.ctrl):
+        _keyboard.press('a')
+        _keyboard.release('a')
     time.sleep(0.1)
 
     # Copy (Ctrl+C)
-    pyautogui.hotkey('ctrl', 'c')
+    with _keyboard.pressed(Key.ctrl):
+        _keyboard.press('c')
+        _keyboard.release('c')
     time.sleep(0.1)
 
     # Get clipboard contents
@@ -73,7 +80,9 @@ def type_to_chat(text: str, coords: Coordinates = None) -> None:
         coords = DEFAULT_COORDINATES
 
     # Click on chat input area
-    pyautogui.click(coords.chat_input_x, coords.chat_input_y)
+    _mouse.position = (coords.chat_input_x, coords.chat_input_y)
+    time.sleep(0.05)
+    _mouse.click(Button.left)
     time.sleep(0.1)
 
     # Type text directly using pynput (supports Korean)
