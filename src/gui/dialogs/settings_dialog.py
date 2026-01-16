@@ -16,7 +16,7 @@ class SettingsDialog:
         # Create dialog window
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("설정")
-        self.dialog.geometry("400x500")
+        self.dialog.geometry("450x400")
         self.dialog.resizable(False, False)
         self.dialog.transient(parent)
         self.dialog.grab_set()
@@ -45,17 +45,18 @@ class SettingsDialog:
 
     def _create_strategy_tab(self, parent) -> None:
         """Create strategy settings tab"""
-        # Target level
-        ttk.Label(parent, text="목표 판매 레벨:").grid(row=0, column=0, sticky="w", pady=5)
-        self.target_level = ttk.Spinbox(parent, from_=1, to=20, width=10)
-        self.target_level.set(self.settings.level_threshold)
-        self.target_level.grid(row=0, column=1, sticky="e", pady=5)
+        # Title
+        ttk.Label(
+            parent,
+            text="목표 레벨까지 계속 강화합니다",
+            font=("", 10, "bold")
+        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 15))
 
-        # Max fails
-        ttk.Label(parent, text="최대 연속 실패 횟수:").grid(row=1, column=0, sticky="w", pady=5)
-        self.max_fails = ttk.Spinbox(parent, from_=1, to=10, width=10)
-        self.max_fails.set(self.settings.max_fails)
-        self.max_fails.grid(row=1, column=1, sticky="e", pady=5)
+        # Target level
+        ttk.Label(parent, text="목표 강화 레벨:").grid(row=1, column=0, sticky="w", pady=5)
+        self.target_level = ttk.Spinbox(parent, from_=1, to=20, width=10)
+        self.target_level.set(self.settings.target_level)
+        self.target_level.grid(row=1, column=1, sticky="e", pady=5)
 
         # Min gold
         ttk.Label(parent, text="최소 필요 골드:").grid(row=2, column=0, sticky="w", pady=5)
@@ -63,28 +64,37 @@ class SettingsDialog:
         self.min_gold.insert(0, str(self.settings.min_gold))
         self.min_gold.grid(row=2, column=1, sticky="e", pady=5)
 
-        # Max level
-        ttk.Label(parent, text="최대 강화 레벨:").grid(row=3, column=0, sticky="w", pady=5)
-        self.max_level = ttk.Spinbox(parent, from_=10, to=20, width=10)
-        self.max_level.set(self.settings.max_level)
-        self.max_level.grid(row=3, column=1, sticky="e", pady=5)
+        # Options separator
+        ttk.Separator(parent, orient="horizontal").grid(row=3, column=0, columnspan=2, sticky="ew", pady=15)
 
-        # Auto sell options
-        ttk.Separator(parent, orient="horizontal").grid(row=4, column=0, columnspan=2, sticky="ew", pady=10)
+        ttk.Label(
+            parent,
+            text="목표 도달 시 동작",
+            font=("", 9, "bold")
+        ).grid(row=4, column=0, columnspan=2, sticky="w", pady=(0, 5))
 
-        self.auto_threshold = tk.BooleanVar(value=self.settings.auto_sell_on_threshold)
+        # Pause on target
+        self.pause_on_target = tk.BooleanVar(value=self.settings.pause_on_target)
         ttk.Checkbutton(
             parent,
-            text="목표 레벨 도달 시 자동 판매",
-            variable=self.auto_threshold
+            text="목표 레벨 도달 시 일시정지",
+            variable=self.pause_on_target
         ).grid(row=5, column=0, columnspan=2, sticky="w", pady=5)
 
-        self.auto_fails = tk.BooleanVar(value=self.settings.auto_sell_on_max_fails)
+        # Sell on target
+        self.sell_on_target = tk.BooleanVar(value=self.settings.sell_on_target)
         ttk.Checkbutton(
             parent,
-            text="최대 실패 횟수 도달 시 자동 판매",
-            variable=self.auto_fails
+            text="목표 레벨 도달 시 판매 (골드 파밍용)",
+            variable=self.sell_on_target
         ).grid(row=6, column=0, columnspan=2, sticky="w", pady=5)
+
+        # Note
+        ttk.Label(
+            parent,
+            text="💡 파괴되면 자동으로 0강부터 다시 강화합니다",
+            foreground="gray"
+        ).grid(row=7, column=0, columnspan=2, sticky="w", pady=(15, 5))
 
         # Configure columns
         parent.columnconfigure(0, weight=1)
@@ -132,12 +142,10 @@ class SettingsDialog:
         """Save settings"""
         try:
             # Update settings from inputs
-            self.settings.level_threshold = int(self.target_level.get())
-            self.settings.max_fails = int(self.max_fails.get())
+            self.settings.target_level = int(self.target_level.get())
             self.settings.min_gold = int(self.min_gold.get())
-            self.settings.max_level = int(self.max_level.get())
-            self.settings.auto_sell_on_threshold = self.auto_threshold.get()
-            self.settings.auto_sell_on_max_fails = self.auto_fails.get()
+            self.settings.pause_on_target = self.pause_on_target.get()
+            self.settings.sell_on_target = self.sell_on_target.get()
 
             self.settings.action_delay = float(self.action_delay.get())
             self.settings.click_delay = float(self.click_delay.get())
@@ -162,16 +170,10 @@ class SettingsDialog:
         defaults = Settings()
 
         self.target_level.delete(0, tk.END)
-        self.target_level.insert(0, str(defaults.level_threshold))
-
-        self.max_fails.delete(0, tk.END)
-        self.max_fails.insert(0, str(defaults.max_fails))
+        self.target_level.insert(0, str(defaults.target_level))
 
         self.min_gold.delete(0, tk.END)
         self.min_gold.insert(0, str(defaults.min_gold))
-
-        self.max_level.delete(0, tk.END)
-        self.max_level.insert(0, str(defaults.max_level))
 
         self.action_delay.delete(0, tk.END)
         self.action_delay.insert(0, str(defaults.action_delay))
@@ -185,5 +187,5 @@ class SettingsDialog:
         self.response_timeout.delete(0, tk.END)
         self.response_timeout.insert(0, str(defaults.response_timeout))
 
-        self.auto_threshold.set(defaults.auto_sell_on_threshold)
-        self.auto_fails.set(defaults.auto_sell_on_max_fails)
+        self.pause_on_target.set(defaults.pause_on_target)
+        self.sell_on_target.set(defaults.sell_on_target)
