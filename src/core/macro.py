@@ -190,9 +190,12 @@ class MacroRunner:
         logger.info(f"현재 좌표: output=({self.coords.chat_output_x}, {self.coords.chat_output_y}), input=({self.coords.chat_input_x}, {self.coords.chat_input_y})")
         logger.info(f"설정: target_level={self.settings.target_level}, action_delay={self.settings.action_delay}")
 
+        # GUI 업데이트를 위해 잠시 대기 후 상태 변경
+        time.sleep(0.1)
         self._set_macro_state(MacroState.RUNNING)
+        time.sleep(0.1)  # GUI가 업데이트될 시간 확보
 
-        # 시작 전 현재 상태 읽기 (초기 상태 파악)
+        # 시작 전 현재 상태 읽기 (초기 상태 파악) - 선택적
         try:
             logger.info("초기 상태 읽기 중...")
             chat_text = check_status(self.coords, self.settings)
@@ -200,6 +203,7 @@ class MacroRunner:
             if initial_state.gold > 0 or initial_state.level > 0:
                 self.game_state.gold = initial_state.gold
                 self.game_state.level = initial_state.level
+                self.game_state.sword_name = initial_state.sword_name
                 logger.info(f"초기 상태 파악: level={initial_state.level}, gold={initial_state.gold}")
             else:
                 logger.info("초기 상태를 파악할 수 없음 - 첫 강화 후 상태 확인")
