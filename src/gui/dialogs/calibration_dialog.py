@@ -5,9 +5,9 @@ from typing import Callable, Optional
 import threading
 import time
 
-import pyautogui
 from pynput import mouse
 
+from ...automation.mouse import get_position, click_at
 from ...config.coordinates import Coordinates
 from ...utils.logger import get_logger, LOG_DIR
 
@@ -144,7 +144,7 @@ class CalibrationDialog:
     def _update_position(self) -> None:
         """Update current mouse position display"""
         try:
-            x, y = pyautogui.position()
+            x, y = get_position()
             self.pos_label.config(text=f"X: {x}, Y: {y}")
             self.dialog.after(50, self._update_position)
         except Exception as e:
@@ -229,8 +229,8 @@ class CalibrationDialog:
             self.dialog.withdraw()
 
             time.sleep(3)
-            logger.debug(f"pyautogui.click({x}, {y}) 실행")
-            pyautogui.click(x, y)
+            logger.debug(f"click_at({x}, {y}) 실행")
+            click_at(x, y)
             logger.info("테스트 클릭 완료")
 
             self.dialog.deiconify()

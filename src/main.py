@@ -51,18 +51,18 @@ def main():
         print("좌표 캘리브레이션 모드")
         print("마우스를 원하는 위치로 이동한 후 Enter를 누르세요.")
 
-        import pyautogui
+        from .automation.mouse import get_position
 
         print("\n[채팅 출력 영역] 마우스를 위치시키고 Enter...")
         input()
-        x, y = pyautogui.position()
+        x, y = get_position()
         coords.chat_output_x = x
         coords.chat_output_y = y
         print(f"  저장됨: ({x}, {y})")
 
         print("\n[채팅 입력 영역] 마우스를 위치시키고 Enter...")
         input()
-        x, y = pyautogui.position()
+        x, y = get_position()
         coords.chat_input_x = x
         coords.chat_input_y = y
         print(f"  저장됨: ({x}, {y})")

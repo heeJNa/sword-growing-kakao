@@ -2,7 +2,6 @@
 import time
 from typing import Optional
 from ..automation.clipboard import type_to_chat, copy_chat_output
-from ..automation.mouse import click_at
 from ..config.coordinates import Coordinates, DEFAULT_COORDINATES
 from ..config.settings import Settings, DEFAULT_SETTINGS
 from ..utils.logger import get_logger
