@@ -140,7 +140,10 @@ class Win32Window:
 
     def click(self, x: int, y: int, button: str = "left") -> bool:
         """
-        Send a click to the window at client coordinates.
+        Send a click to the window at client coordinates using hardware-level events.
+
+        Uses SendInput/mouse_event instead of PostMessage because many applications
+        (like KakaoTalk) ignore synthetic PostMessage-based clicks.
 
         Args:
             x: Client X coordinate
@@ -155,22 +158,53 @@ class Win32Window:
             return False
 
         try:
-            lparam = _make_lparam(x, y)
-
-            if button == "left":
-                win32gui.PostMessage(self.hwnd, WM_LBUTTONDOWN, MK_LBUTTON, lparam)
-                time.sleep(0.01)
-                win32gui.PostMessage(self.hwnd, WM_LBUTTONUP, 0, lparam)
-            elif button == "right":
-                win32gui.PostMessage(self.hwnd, WM_RBUTTONDOWN, MK_LBUTTON, lparam)
-                time.sleep(0.01)
-                win32gui.PostMessage(self.hwnd, WM_RBUTTONUP, 0, lparam)
-
-            logger.debug(f"Click sent: ({x}, {y}) button={button}")
-            return True
+            # Convert client coordinates to screen coordinates
+            screen_x, screen_y = self.client_to_screen(x, y)
+            return self.click_screen(screen_x, screen_y, button)
 
         except Exception as e:
             logger.error(f"Click failed: {e}")
+            return False
+
+    def click_screen(self, screen_x: int, screen_y: int, button: str = "left") -> bool:
+        """
+        Send a click at absolute screen coordinates using hardware-level events.
+
+        Uses mouse_event which generates actual hardware input that applications
+        cannot ignore (unlike PostMessage).
+
+        Args:
+            screen_x: Screen X coordinate
+            screen_y: Screen Y coordinate
+            button: "left" or "right"
+
+        Returns:
+            True if successful
+        """
+        if not HAS_WIN32:
+            logger.error("win32 not available for click")
+            return False
+
+        try:
+            # Move cursor to position
+            win32api.SetCursorPos((screen_x, screen_y))
+            time.sleep(0.01)
+
+            # Send hardware-level mouse events
+            if button == "left":
+                win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, screen_x, screen_y, 0, 0)
+                time.sleep(0.01)
+                win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, screen_x, screen_y, 0, 0)
+            elif button == "right":
+                win32api.mouse_event(win32con.MOUSEEVENTF_RIGHTDOWN, screen_x, screen_y, 0, 0)
+                time.sleep(0.01)
+                win32api.mouse_event(win32con.MOUSEEVENTF_RIGHTUP, screen_x, screen_y, 0, 0)
+
+            logger.debug(f"Click sent: screen({screen_x}, {screen_y}) button={button}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Click (screen) failed: {e}")
             return False
 
     def send_key(self, vk_code: int) -> bool:

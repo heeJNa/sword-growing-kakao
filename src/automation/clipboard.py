@@ -108,15 +108,13 @@ def copy_chat_output(coords: Coordinates = None) -> str:
     window = _ensure_window()
 
     try:
-        # Convert screen coordinates to client coordinates
-        client_x, client_y = window.screen_to_client(
-            coords.chat_output_x, coords.chat_output_y
-        )
+        screen_x = coords.chat_output_x
+        screen_y = coords.chat_output_y
 
-        logger.debug(f"채팅 출력 클릭: ({client_x}, {client_y})")
+        logger.debug(f"채팅 출력 클릭: screen({screen_x}, {screen_y})")
 
-        # Click on chat output area
-        window.click(client_x, client_y)
+        # Click on chat output area using hardware-level events
+        window.click_screen(screen_x, screen_y)
         time.sleep(0.1)
 
         # Select all (Ctrl+A)
@@ -165,15 +163,13 @@ def type_to_chat(text: str, coords: Coordinates = None) -> None:
         except Exception:
             pass
 
-        # Convert screen coordinates to client coordinates
-        client_x, client_y = window.screen_to_client(
-            coords.chat_input_x, coords.chat_input_y
-        )
+        screen_x = coords.chat_input_x
+        screen_y = coords.chat_input_y
 
-        logger.debug(f"입력창 클릭: ({client_x}, {client_y})")
+        logger.debug(f"입력창 클릭: screen({screen_x}, {screen_y})")
 
-        # Click on chat input area
-        window.click(client_x, client_y)
+        # Click on chat input area using hardware-level events
+        window.click_screen(screen_x, screen_y)
         time.sleep(0.1)
 
         # Copy text to clipboard
