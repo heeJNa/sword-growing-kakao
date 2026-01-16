@@ -5,6 +5,9 @@ from .base import Strategy, Action
 from ..core.state import GameState
 from ..config.settings import Settings, DEFAULT_SETTINGS
 from ..config.game_data import LEVEL_DATA, get_enhance_cost
+from ..utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -31,8 +34,19 @@ class EnhanceUntilTargetStrategy(Strategy):
     """
 
     def __init__(self, config: StrategyConfig = None, settings: Settings = None):
-        self.config = config or StrategyConfig()
         self.settings = settings or DEFAULT_SETTINGS
+
+        # If no config provided, create from settings
+        if config is None:
+            self.config = StrategyConfig(
+                target_level=self.settings.target_level,
+                sell_on_target=self.settings.sell_on_target,
+                pause_on_target=self.settings.pause_on_target,
+                min_gold=self.settings.min_gold,
+            )
+        else:
+            self.config = config
+
         self._target_reached = False
 
     def decide(self, state: GameState) -> Action:
@@ -45,29 +59,41 @@ class EnhanceUntilTargetStrategy(Strategy):
         Returns:
             Action to take (ENHANCE, SELL, or WAIT)
         """
+        logger.debug(f"전략 결정 시작: level={state.level}, gold={state.gold}, target={self.config.target_level}")
+
         # Check if target reached
         if state.level >= self.config.target_level:
             self._target_reached = True
+            logger.info(f"목표 도달! (현재: {state.level}강 >= 목표: {self.config.target_level}강)")
             if self.config.sell_on_target:
+                logger.info("sell_on_target=True -> SELL")
                 return Action.SELL
             if self.config.pause_on_target:
+                logger.info("pause_on_target=True -> WAIT")
                 return Action.WAIT
             # If not selling or pausing, continue enhancing
+            logger.info("계속 강화 -> ENHANCE")
             return Action.ENHANCE
 
         # Check if at absolute max level
         if state.level >= self.config.max_level:
+            logger.info(f"최대 레벨 도달 ({self.config.max_level}) -> WAIT")
             return Action.WAIT
 
         # Check gold - only sell if really necessary
         enhance_cost = get_enhance_cost(state.level)
+        logger.debug(f"강화 비용: {enhance_cost}, 현재 골드: {state.gold}, 최소 골드: {self.config.min_gold}")
+
         if state.gold < enhance_cost and state.gold < self.config.min_gold:
             if state.level > 0:
+                logger.info(f"골드 부족 (현재: {state.gold} < 필요: {enhance_cost}) -> SELL")
                 return Action.SELL
             else:
+                logger.info("0강 + 골드 부족 -> WAIT")
                 return Action.WAIT  # Can't do anything at 0 with no gold
 
         # Default: keep enhancing toward target
+        logger.debug(f"강화 계속 ({state.level}강 -> {self.config.target_level}강 목표)")
         return Action.ENHANCE
 
     def get_name(self) -> str:

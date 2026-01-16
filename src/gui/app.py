@@ -23,6 +23,7 @@ from ..stats.collector import StatsCollector
 from ..stats.models import SessionStats
 from ..automation.hotkeys import HotkeyListener
 from ..utils.logger import get_logger
+from ..utils.single_instance import ensure_single_instance, release_single_instance
 
 # Logger for this module
 logger = get_logger(__name__)
@@ -40,6 +41,16 @@ class MacroApp:
 
     def __init__(self):
         logger.info("검키우기 매크로 시작")
+
+        # Check single instance
+        if not ensure_single_instance("sword-macro"):
+            logger.error("이미 실행 중인 인스턴스가 있습니다!")
+            import tkinter.messagebox as msgbox
+            root = tk.Tk()
+            root.withdraw()
+            msgbox.showerror("실행 오류", "프로그램이 이미 실행 중입니다.\n기존 프로그램을 종료하고 다시 시도해주세요.")
+            root.destroy()
+            raise SystemExit(1)
 
         # Load configuration
         self.settings = Settings.load()
@@ -90,6 +101,9 @@ class MacroApp:
 
         # Handle window close (minimize to tray)
         self.root.protocol("WM_DELETE_WINDOW", self._on_window_close)
+
+        # Bring window to front on startup
+        self._bring_to_front()
 
     def _setup_ui(self) -> None:
         """Setup main UI layout with tabs"""
@@ -438,12 +452,19 @@ ESC - 긴급 정지
                 "백그라운드에서 실행 중입니다. 트레이 아이콘을 클릭하여 열 수 있습니다."
             )
 
+    def _bring_to_front(self) -> None:
+        """Bring window to front (above other windows)"""
+        logger.debug("창을 앞으로 가져오기")
+        self.root.lift()
+        self.root.attributes('-topmost', True)
+        self.root.after(100, lambda: self.root.attributes('-topmost', False))
+        self.root.focus_force()
+
     def _show_window(self) -> None:
         """Show window from system tray"""
         logger.info("창 복원")
         self.root.deiconify()
-        self.root.lift()
-        self.root.focus_force()
+        self._bring_to_front()
 
     def _on_quit(self) -> None:
         """Handle actual quit"""
@@ -453,6 +474,9 @@ ESC - 긴급 정지
             self.macro.stop()
 
         logger.info("프로그램 종료")
+
+        # Release single instance lock
+        release_single_instance()
 
         # End session
         self.stats_collector.end_session()
