@@ -61,6 +61,11 @@ class EnhanceUntilTargetStrategy(Strategy):
         """
         logger.debug(f"전략 결정 시작: level={state.level}, gold={state.gold}, target={self.config.target_level}")
 
+        # 초기 상태 (gold=0): 실제 상태를 모르므로 먼저 강화 시도하여 상태 확인
+        if state.gold == 0 and state.level == 0:
+            logger.info("초기 상태 (gold=0, level=0) - 먼저 강화 시도하여 실제 상태 확인")
+            return Action.ENHANCE
+
         # Check if target reached
         if state.level >= self.config.target_level:
             self._target_reached = True
@@ -89,8 +94,10 @@ class EnhanceUntilTargetStrategy(Strategy):
                 logger.info(f"골드 부족 (현재: {state.gold} < 필요: {enhance_cost}) -> SELL")
                 return Action.SELL
             else:
-                logger.info("0강 + 골드 부족 -> WAIT")
-                return Action.WAIT  # Can't do anything at 0 with no gold
+                # level=0이고 골드도 부족한 경우에도 한번 강화 시도
+                # (채팅에서 실제 골드 정보를 읽어올 수 있음)
+                logger.info(f"0강 + 골드 부족 ({state.gold}) - 강화 시도하여 실제 상태 확인")
+                return Action.ENHANCE
 
         # Default: keep enhancing toward target
         logger.debug(f"강화 계속 ({state.level}강 -> {self.config.target_level}강 목표)")

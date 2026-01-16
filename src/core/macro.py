@@ -192,6 +192,20 @@ class MacroRunner:
 
         self._set_macro_state(MacroState.RUNNING)
 
+        # 시작 전 현재 상태 읽기 (초기 상태 파악)
+        try:
+            logger.info("초기 상태 읽기 중...")
+            chat_text = check_status(self.coords, self.settings)
+            _, initial_state = parse_chat(chat_text)
+            if initial_state.gold > 0 or initial_state.level > 0:
+                self.game_state.gold = initial_state.gold
+                self.game_state.level = initial_state.level
+                logger.info(f"초기 상태 파악: level={initial_state.level}, gold={initial_state.gold}")
+            else:
+                logger.info("초기 상태를 파악할 수 없음 - 첫 강화 후 상태 확인")
+        except Exception as e:
+            logger.warning(f"초기 상태 읽기 실패: {e} - 계속 진행")
+
         # Start stats session
         self.stats.start_session(self.game_state.gold)
         logger.info(f"세션 시작: starting_gold={self.game_state.gold}")
