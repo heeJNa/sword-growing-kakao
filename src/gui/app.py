@@ -122,6 +122,13 @@ class MacroApp:
         self.system_log_panel = SystemLogPanel(log_frame)
         self.system_log_panel.pack(fill="both", expand=True)
 
+        # Setup system log panel control callbacks
+        self.system_log_panel.set_control_callbacks(
+            on_start=self._on_start,
+            on_pause=self._on_pause,
+            on_stop=self._on_stop,
+        )
+
         # Control panel (always visible at bottom)
         control_frame = ttk.Frame(self.root)
         control_frame.pack(fill="x", padx=10, pady=(0, 10))
@@ -332,6 +339,8 @@ class MacroApp:
             self.status_panel.update_macro_state(status)
             self.control_panel.set_running(status == MacroState.RUNNING)
             self.control_panel.set_paused(status == MacroState.PAUSED)
+            self.system_log_panel.set_running(status == MacroState.RUNNING)
+            self.system_log_panel.set_paused(status == MacroState.PAUSED)
             self._update_dashboard_buttons(status)
 
         self.root.after(0, update_ui)

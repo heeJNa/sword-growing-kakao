@@ -62,7 +62,50 @@ class SystemLogPanel(ttk.Frame):
     def __init__(self, parent):
         super().__init__(parent, padding=5)
 
-        # Toolbar
+        # Callbacks for control buttons
+        self._on_start: Optional[callable] = None
+        self._on_pause: Optional[callable] = None
+        self._on_stop: Optional[callable] = None
+
+        # Control toolbar (start/pause/stop buttons)
+        control_toolbar = ttk.Frame(self)
+        control_toolbar.pack(fill="x", pady=(0, 5))
+
+        # Control buttons frame
+        control_frame = ttk.LabelFrame(control_toolbar, text="매크로 제어", padding=5)
+        control_frame.pack(side="left")
+
+        self.start_btn = ttk.Button(
+            control_frame,
+            text="▶ 시작",
+            command=self._handle_start,
+            width=10
+        )
+        self.start_btn.pack(side="left", padx=2)
+
+        self.pause_btn = ttk.Button(
+            control_frame,
+            text="⏸ 일시정지",
+            command=self._handle_pause,
+            width=10,
+            state="disabled"
+        )
+        self.pause_btn.pack(side="left", padx=2)
+
+        self.stop_btn = ttk.Button(
+            control_frame,
+            text="■ 정지",
+            command=self._handle_stop,
+            width=10,
+            state="disabled"
+        )
+        self.stop_btn.pack(side="left", padx=2)
+
+        # State tracking
+        self._is_running = False
+        self._is_paused = False
+
+        # Log toolbar
         toolbar = ttk.Frame(self)
         toolbar.pack(fill="x", pady=(0, 5))
 
@@ -212,6 +255,53 @@ class SystemLogPanel(ttk.Frame):
         logger = logging.getLogger("gui")
         log_func = getattr(logger, level.lower(), logger.info)
         log_func(message)
+
+    # === Control button methods ===
+
+    def set_control_callbacks(
+        self,
+        on_start: callable = None,
+        on_pause: callable = None,
+        on_stop: callable = None,
+    ) -> None:
+        """Set callback functions for control buttons"""
+        self._on_start = on_start
+        self._on_pause = on_pause
+        self._on_stop = on_stop
+
+    def _handle_start(self) -> None:
+        if self._on_start:
+            self._on_start()
+
+    def _handle_pause(self) -> None:
+        if self._on_pause:
+            self._on_pause()
+
+    def _handle_stop(self) -> None:
+        if self._on_stop:
+            self._on_stop()
+
+    def set_running(self, running: bool) -> None:
+        """Update button states for running mode"""
+        self._is_running = running
+
+        if running:
+            self.start_btn.config(state="disabled")
+            self.pause_btn.config(state="normal", text="⏸ 일시정지")
+            self.stop_btn.config(state="normal")
+        else:
+            self.start_btn.config(state="normal")
+            self.pause_btn.config(state="disabled")
+            self.stop_btn.config(state="disabled")
+
+    def set_paused(self, paused: bool) -> None:
+        """Update button states for paused mode"""
+        self._is_paused = paused
+
+        if paused:
+            self.pause_btn.config(text="▶ 재개")
+        else:
+            self.pause_btn.config(text="⏸ 일시정지")
 
     def destroy(self) -> None:
         """Clean up when widget is destroyed"""
