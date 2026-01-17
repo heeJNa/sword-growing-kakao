@@ -1,11 +1,12 @@
 """Main macro runner module"""
 import copy
+import re
 import time
 import threading
 from typing import Optional, Callable, Tuple
 from dataclasses import dataclass
 from .state import GameState, MacroState, EnhanceResult
-from .parser import parse_chat, parse_profile
+from .parser import parse_chat, parse_profile, RESULT_PATTERNS
 from .actions import enhance, sell, check_status
 from ..automation.clipboard import type_to_chat
 from ..strategy.base import Strategy, Action
@@ -16,6 +17,34 @@ from ..config.coordinates import Coordinates, DEFAULT_COORDINATES
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def count_result_patterns(text: str) -> dict:
+    """
+    Count occurrences of result patterns in text.
+
+    This is used for stale detection - if the count increases,
+    we have new content even if the overall text looks similar.
+
+    Args:
+        text: Chat text to analyze
+
+    Returns:
+        Dictionary with counts for each result type
+    """
+    if not text:
+        return {"success": 0, "maintain": 0, "destroy": 0, "total": 0}
+
+    success_count = len(re.findall(RESULT_PATTERNS["success"], text))
+    maintain_count = len(re.findall(RESULT_PATTERNS["maintain"], text))
+    destroy_count = len(re.findall(RESULT_PATTERNS["destroy"], text))
+
+    return {
+        "success": success_count,
+        "maintain": maintain_count,
+        "destroy": destroy_count,
+        "total": success_count + maintain_count + destroy_count
+    }
 
 
 # === Y Offset Constants ===
@@ -227,6 +256,9 @@ class MacroRunner:
         max_retries = 3
         chat_text = ""
 
+        # Count result patterns in previous content for smarter stale detection
+        patterns_before = count_result_patterns(clipboard_before) if clipboard_before else None
+
         for retry in range(max_retries):
             logger.debug(f"채팅 상태 확인 중... (시도 {retry + 1}/{max_retries}, y_offset={y_offset})")
             chat_text = check_status(self.coords, self.settings, y_offset=y_offset)
@@ -238,10 +270,20 @@ class MacroRunner:
                 continue
 
             # Check if clipboard content is same as before action (stale)
-            if clipboard_before and chat_text == clipboard_before and retry < max_retries - 1:
-                logger.warning(f"클립보드 내용이 액션 전과 동일 - 새 결과 대기 ({self.settings.retry_delay}초)")
-                time.sleep(self.settings.retry_delay)
-                continue
+            # Use smarter detection: compare result pattern counts, not just text
+            if clipboard_before and patterns_before and retry < max_retries - 1:
+                patterns_now = count_result_patterns(chat_text)
+
+                # If total result pattern count increased, we have new content
+                if patterns_now["total"] > patterns_before["total"]:
+                    logger.debug(f"새로운 결과 패턴 감지 (이전: {patterns_before['total']}, 현재: {patterns_now['total']})")
+                    break
+
+                # If text is exactly same and pattern count didn't increase, it's stale
+                if chat_text == clipboard_before:
+                    logger.warning(f"클립보드 내용이 액션 전과 동일 - 새 결과 대기 ({self.settings.retry_delay}초)")
+                    time.sleep(self.settings.retry_delay)
+                    continue
 
             # Valid new content
             logger.debug(f"새로운 클립보드 내용 확인됨 (길이: {len(chat_text)})")
