@@ -53,7 +53,7 @@ class YOffsetConfig:
     """Y offset configuration for clipboard reading based on level."""
     HIGH_LEVEL_THRESHOLD: int = 9
     DEFAULT_OFFSET: int = 0
-    HIGH_LEVEL_OFFSET: int = -60
+    HIGH_LEVEL_OFFSET: int = -65
     RETRY_OFFSET_LOW: int = -40
     RETRY_OFFSET_HIGH: int = -70
     RETRY_OFFSET_ADJUST: int = 10
