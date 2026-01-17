@@ -2,6 +2,22 @@
 import sys
 import os
 
+# CRITICAL: Initialize tkinter BEFORE any other imports that might use GUI
+# This prevents NSApplication conflicts on macOS app bundles
+# (matplotlib, pyobjc, etc. can interfere if imported first)
+import tkinter as tk
+# Create a temporary root to ensure Tk is fully initialized
+_init_root = tk.Tk()
+_init_root.withdraw()
+
+# Now safe to configure matplotlib backend
+import matplotlib
+matplotlib.use('TkAgg')  # Explicitly use TkAgg backend
+
+# Destroy the temporary root
+_init_root.destroy()
+del _init_root
+
 # Add src to path for imports
 if getattr(sys, 'frozen', False):
     # Running as compiled EXE

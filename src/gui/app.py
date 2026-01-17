@@ -29,9 +29,16 @@ from ..utils.single_instance import ensure_single_instance, release_single_insta
 logger = get_logger(__name__)
 
 # Try to import system tray (optional dependency)
+# NOTE: System tray is disabled on macOS because pystray runs its own
+# NSApplication run loop in a background thread, which conflicts with
+# tkinter's mainloop and causes crashes in app bundles.
 try:
-    from .system_tray import SystemTray
-    HAS_SYSTEM_TRAY = True
+    if sys.platform == "darwin":
+        # Disable system tray on macOS to prevent NSUpdateCycleInitialize crash
+        HAS_SYSTEM_TRAY = False
+    else:
+        from .system_tray import SystemTray
+        HAS_SYSTEM_TRAY = True
 except ImportError:
     HAS_SYSTEM_TRAY = False
 
@@ -110,14 +117,11 @@ class MacroApp:
         # Setup system tray (minimize to tray on close)
         self._setup_system_tray()
 
-        # Start GUI update loop
-        self._start_update_loop()
-
         # Handle window close (minimize to tray)
         self.root.protocol("WM_DELETE_WINDOW", self._on_window_close)
 
-        # Bring window to front on startup
-        self._bring_to_front()
+        # Note: _start_update_loop() and _bring_to_front() are called in run()
+        # to ensure mainloop is ready (required for macOS app bundle)
 
     def _setup_ui(self) -> None:
         """Setup main UI layout with tabs"""
@@ -762,6 +766,15 @@ Mac 손쉬운 사용 권한 안내
     def run(self) -> None:
         """Run the application"""
         logger.info("GUI 메인 루프 시작")
+
+        # Start GUI update loop (must be called when mainloop is ready)
+        # This is critical for macOS app bundles - calling after() before
+        # mainloop causes NSUpdateCycleInitialize crash
+        self._start_update_loop()
+
+        # Bring window to front on startup
+        self._bring_to_front()
+
         self.root.mainloop()
 
 

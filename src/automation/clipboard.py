@@ -4,7 +4,6 @@ import time
 import subprocess
 import pyperclip
 from pynput.mouse import Controller as MouseController, Button
-from pynput.keyboard import Controller as KeyboardController, Key
 from ..config.coordinates import Coordinates, DEFAULT_COORDINATES
 from ..utils.logger import get_logger
 
@@ -14,9 +13,20 @@ logger = get_logger(__name__)
 # Platform detection
 _IS_MAC = sys.platform == "darwin"
 
-# pynput controllers (work on all platforms including background threads)
+# pynput mouse controller (works on all platforms including background threads)
 _mouse = MouseController()
-_keyboard = KeyboardController()
+
+# pynput keyboard controller - ONLY on non-Mac platforms
+# macOS has thread safety issues with pynput keyboard in background threads
+# which causes NSApplication threading crashes
+if not _IS_MAC:
+    from pynput.keyboard import Controller as KeyboardController, Key
+    _keyboard = KeyboardController()
+else:
+    # On macOS, we use AppleScript for keyboard operations (defined below)
+    # No pynput keyboard imports to avoid PyObjC/AppKit thread safety issues
+    _keyboard = None
+    Key = None  # Not used on macOS
 
 
 def _mac_activate_app(app_name: str = "KakaoTalk") -> bool:
@@ -222,45 +232,63 @@ def copy_chat_output(coords: Coordinates = None, y_offset: int = 0) -> str:
     if coords is None:
         coords = DEFAULT_COORDINATES
 
-    # Modifier key: Cmd on Mac, Ctrl on Windows/Linux
-    modifier_key = Key.cmd if _IS_MAC else Key.ctrl
-
     if _IS_MAC:
+        # macOS: Use AppleScript for keyboard operations (thread-safe)
         # Pre-flight check: Is KakaoTalk running?
         if not _mac_is_app_running("KakaoTalk"):
             logger.error("KakaoTalk이 실행되지 않음!")
             return ""
 
-        # Activate KakaoTalk
-        _mac_activate_app("KakaoTalk")
+        # Click on chat output area (with y_offset)
+        click_x = coords.chat_output_x
+        click_y = coords.chat_output_y + y_offset
+        logger.debug(f"채팅 출력 영역 클릭: ({click_x}, {click_y}) [y_offset={y_offset}]")
+        _mouse.position = (click_x, click_y)
+        time.sleep(0.1)
+        _mouse.click(Button.left)
+        time.sleep(0.2)
 
-    # Click on chat output area (with y_offset)
-    click_x = coords.chat_output_x
-    click_y = coords.chat_output_y + y_offset
-    logger.debug(f"채팅 출력 영역 클릭: ({click_x}, {click_y}) [y_offset={y_offset}]")
-    _mouse.position = (click_x, click_y)
-    time.sleep(0.1)
-    _mouse.click(Button.left)
-    time.sleep(0.2)
+        # Use AppleScript for Select All + Copy (thread-safe)
+        if not _mac_select_all_and_copy():
+            logger.warning("AppleScript Select All + Copy 실패")
+            return ""
 
-    # Select All (Cmd+A or Ctrl+A)
-    logger.debug(f"전체 선택: {modifier_key}+A")
-    with _keyboard.pressed(modifier_key):
-        _keyboard.press('a')
-        _keyboard.release('a')
-    time.sleep(0.15)
+        # Get clipboard contents
+        result = pyperclip.paste()
+        logger.debug(f"copy_chat_output() 완료: {len(result)}자")
+        return result
 
-    # Copy (Cmd+C or Ctrl+C)
-    logger.debug(f"복사: {modifier_key}+C")
-    with _keyboard.pressed(modifier_key):
-        _keyboard.press('c')
-        _keyboard.release('c')
-    time.sleep(0.2)
+    else:
+        # Windows/Linux: Use pynput keyboard
+        modifier_key = Key.ctrl
 
-    # Get clipboard contents
-    result = pyperclip.paste()
-    logger.debug(f"copy_chat_output() 완료: {len(result)}자")
-    return result
+        # Click on chat output area (with y_offset)
+        click_x = coords.chat_output_x
+        click_y = coords.chat_output_y + y_offset
+        logger.debug(f"채팅 출력 영역 클릭: ({click_x}, {click_y}) [y_offset={y_offset}]")
+        _mouse.position = (click_x, click_y)
+        time.sleep(0.1)
+        _mouse.click(Button.left)
+        time.sleep(0.2)
+
+        # Select All (Ctrl+A)
+        logger.debug(f"전체 선택: {modifier_key}+A")
+        with _keyboard.pressed(modifier_key):
+            _keyboard.press('a')
+            _keyboard.release('a')
+        time.sleep(0.15)
+
+        # Copy (Ctrl+C)
+        logger.debug(f"복사: {modifier_key}+C")
+        with _keyboard.pressed(modifier_key):
+            _keyboard.press('c')
+            _keyboard.release('c')
+        time.sleep(0.2)
+
+        # Get clipboard contents
+        result = pyperclip.paste()
+        logger.debug(f"copy_chat_output() 완료: {len(result)}자")
+        return result
 
 
 def type_to_chat(text: str, coords: Coordinates = None) -> None:
@@ -277,76 +305,86 @@ def type_to_chat(text: str, coords: Coordinates = None) -> None:
     if coords is None:
         coords = DEFAULT_COORDINATES
 
-    # Modifier key: Cmd on Mac, Ctrl on Windows/Linux
-    modifier_key = Key.cmd if _IS_MAC else Key.ctrl
-
     if _IS_MAC:
+        # macOS: Use AppleScript for keyboard operations (thread-safe)
         # Pre-flight check: Is KakaoTalk running?
         if not _mac_is_app_running("KakaoTalk"):
             logger.error("KakaoTalk이 실행되지 않음!")
             return
 
-        # Activate KakaoTalk
-        _mac_activate_app("KakaoTalk")
+        # Click on chat input area
+        logger.debug(f"채팅 입력 영역 클릭: ({coords.chat_input_x}, {coords.chat_input_y})")
+        _mouse.position = (coords.chat_input_x, coords.chat_input_y)
+        time.sleep(0.1)
+        _mouse.click(Button.left)
+        time.sleep(0.2)
 
-    # Click on chat input area
-    logger.debug(f"채팅 입력 영역 클릭: ({coords.chat_input_x}, {coords.chat_input_y})")
-    _mouse.position = (coords.chat_input_x, coords.chat_input_y)
-    time.sleep(0.1)
-    _mouse.click(Button.left)
-    time.sleep(0.2)
+        # Use AppleScript for paste + send (thread-safe)
+        _mac_paste_and_send(text)
+        logger.debug("type_to_chat() 완료")
 
-    # Split text: type "/" directly, paste Korean part separately
-    if text.startswith("/"):
-        # Type "/" directly with prefix delay
-        logger.debug("'/' 직접 입력 (슬래시 딜레이 0.3초)")
-        _keyboard.type("/")
-        time.sleep(0.3)  # Slash delay - prevents command not being recognized
+    else:
+        # Windows/Linux: Use pynput keyboard
+        modifier_key = Key.ctrl
 
-        # Paste Korean part via clipboard
-        korean_part = text[1:]
-        if korean_part:
-            logger.debug(f"클립보드에 복사: '{korean_part}'")
-            pyperclip.copy(korean_part)
-            time.sleep(0.2)  # Wait for clipboard to update
+        # Click on chat input area
+        logger.debug(f"채팅 입력 영역 클릭: ({coords.chat_input_x}, {coords.chat_input_y})")
+        _mouse.position = (coords.chat_input_x, coords.chat_input_y)
+        time.sleep(0.1)
+        _mouse.click(Button.left)
+        time.sleep(0.2)
 
-            # Verify clipboard content
-            clipboard_content = pyperclip.paste()
-            if clipboard_content != korean_part:
-                logger.warning(f"클립보드 불일치! 예상: '{korean_part}', 실제: '{clipboard_content}'")
-                # Retry copy
+        # Split text: type "/" directly, paste Korean part separately
+        if text.startswith("/"):
+            # Type "/" directly with prefix delay
+            logger.debug("'/' 직접 입력 (슬래시 딜레이 0.3초)")
+            _keyboard.type("/")
+            time.sleep(0.3)  # Slash delay - prevents command not being recognized
+
+            # Paste Korean part via clipboard
+            korean_part = text[1:]
+            if korean_part:
+                logger.debug(f"클립보드에 복사: '{korean_part}'")
                 pyperclip.copy(korean_part)
-                time.sleep(0.2)
+                time.sleep(0.2)  # Wait for clipboard to update
 
-            # Paste (Cmd+V or Ctrl+V)
+                # Verify clipboard content
+                clipboard_content = pyperclip.paste()
+                if clipboard_content != korean_part:
+                    logger.warning(f"클립보드 불일치! 예상: '{korean_part}', 실제: '{clipboard_content}'")
+                    # Retry copy
+                    pyperclip.copy(korean_part)
+                    time.sleep(0.2)
+
+                # Paste (Ctrl+V)
+                logger.debug(f"붙여넣기: {modifier_key}+V")
+                with _keyboard.pressed(modifier_key):
+                    _keyboard.press('v')
+                    _keyboard.release('v')
+                time.sleep(0.3)  # Wait after paste before Enter
+        else:
+            # No slash prefix - paste entire text
+            logger.debug(f"클립보드에 복사: '{text}'")
+            pyperclip.copy(text)
+            time.sleep(0.1)
+
+            # Paste (Ctrl+V)
             logger.debug(f"붙여넣기: {modifier_key}+V")
             with _keyboard.pressed(modifier_key):
                 _keyboard.press('v')
                 _keyboard.release('v')
             time.sleep(0.3)  # Wait after paste before Enter
-    else:
-        # No slash prefix - paste entire text
-        logger.debug(f"클립보드에 복사: '{text}'")
-        pyperclip.copy(text)
+
+        # Press Enter twice - required for KakaoTalk
+        logger.debug("Enter 키 전송 (2회) - 붙여넣기 후 딜레이 적용됨")
+        _keyboard.press(Key.enter)
+        _keyboard.release(Key.enter)
+        time.sleep(0.1)
+        _keyboard.press(Key.enter)
+        _keyboard.release(Key.enter)
         time.sleep(0.1)
 
-        # Paste (Cmd+V or Ctrl+V)
-        logger.debug(f"붙여넣기: {modifier_key}+V")
-        with _keyboard.pressed(modifier_key):
-            _keyboard.press('v')
-            _keyboard.release('v')
-        time.sleep(0.3)  # Wait after paste before Enter
-
-    # Press Enter twice - required for KakaoTalk
-    logger.debug("Enter 키 전송 (2회) - 붙여넣기 후 딜레이 적용됨")
-    _keyboard.press(Key.enter)
-    _keyboard.release(Key.enter)
-    time.sleep(0.1)
-    _keyboard.press(Key.enter)
-    _keyboard.release(Key.enter)
-    time.sleep(0.1)
-
-    logger.debug("type_to_chat() 완료")
+        logger.debug("type_to_chat() 완료")
 
 
 def clear_clipboard() -> None:

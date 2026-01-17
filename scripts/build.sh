@@ -41,6 +41,9 @@ if [ "$PLATFORM" == "macos" ]; then
         --windowed \
         --hidden-import "pynput.keyboard._darwin" \
         --hidden-import "pynput.mouse._darwin" \
+        --hidden-import "tkinter" \
+        --hidden-import "_tkinter" \
+        --collect-all "tkinter" \
         --exclude-module gymnasium \
         --exclude-module stable_baselines3 \
         --exclude-module tensorboard \

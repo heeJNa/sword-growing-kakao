@@ -6,6 +6,10 @@ import numpy as np
 
 try:
     import matplotlib
+    # Explicitly set TkAgg backend before importing other matplotlib components
+    # This is critical for macOS app bundles to prevent NSApplication conflicts
+    matplotlib.use('TkAgg')
+
     from matplotlib.figure import Figure
     from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
