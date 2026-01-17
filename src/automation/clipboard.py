@@ -90,7 +90,7 @@ def _mac_select_all_and_copy() -> bool:
     end tell
     '''
 
-    logger.debug("macOS: Select All (Cmd+A) + Copy (Cmd+C) 실행")
+    logger.debug("[KEYBOARD] macOS: Select All (Cmd+A) + Copy (Cmd+C) via AppleScript")
 
     try:
         result = subprocess.run(['osascript', '-e', script], capture_output=True, timeout=10)
@@ -137,7 +137,7 @@ def _mac_paste_and_send(text: str) -> bool:
     end tell
     '''
 
-    logger.debug(f"macOS: Paste + Send 실행: '{text}'")
+    logger.debug(f"[KEYBOARD] macOS: Paste (Cmd+V) + Enter x2 via AppleScript: '{text}'")
 
     try:
         result = subprocess.run(['osascript', '-e', script], capture_output=True, timeout=10)
@@ -242,7 +242,7 @@ def copy_chat_output(coords: Coordinates = None, y_offset: int = 0) -> str:
         # Click on chat output area (with y_offset)
         click_x = coords.chat_output_x
         click_y = coords.chat_output_y + y_offset
-        logger.debug(f"채팅 출력 영역 클릭: ({click_x}, {click_y}) [y_offset={y_offset}]")
+        logger.debug(f"[MOUSE] 채팅 출력 영역 클릭: ({click_x}, {click_y}) [y_offset={y_offset}]")
         _mouse.position = (click_x, click_y)
         time.sleep(0.1)
         _mouse.click(Button.left)
@@ -265,21 +265,21 @@ def copy_chat_output(coords: Coordinates = None, y_offset: int = 0) -> str:
         # Click on chat output area (with y_offset)
         click_x = coords.chat_output_x
         click_y = coords.chat_output_y + y_offset
-        logger.debug(f"채팅 출력 영역 클릭: ({click_x}, {click_y}) [y_offset={y_offset}]")
+        logger.debug(f"[MOUSE] 채팅 출력 영역 클릭: ({click_x}, {click_y}) [y_offset={y_offset}]")
         _mouse.position = (click_x, click_y)
         time.sleep(0.1)
         _mouse.click(Button.left)
         time.sleep(0.2)
 
         # Select All (Ctrl+A)
-        logger.debug(f"전체 선택: {modifier_key}+A")
+        logger.debug(f"[KEYBOARD] 전체 선택: Ctrl+A (modifier={modifier_key})")
         with _keyboard.pressed(modifier_key):
             _keyboard.press('a')
             _keyboard.release('a')
         time.sleep(0.15)
 
         # Copy (Ctrl+C)
-        logger.debug(f"복사: {modifier_key}+C")
+        logger.debug(f"[KEYBOARD] 복사: Ctrl+C (modifier={modifier_key})")
         with _keyboard.pressed(modifier_key):
             _keyboard.press('c')
             _keyboard.release('c')
@@ -313,7 +313,7 @@ def type_to_chat(text: str, coords: Coordinates = None) -> None:
             return
 
         # Click on chat input area
-        logger.debug(f"채팅 입력 영역 클릭: ({coords.chat_input_x}, {coords.chat_input_y})")
+        logger.debug(f"[MOUSE] 채팅 입력 영역 클릭: ({coords.chat_input_x}, {coords.chat_input_y})")
         _mouse.position = (coords.chat_input_x, coords.chat_input_y)
         time.sleep(0.1)
         _mouse.click(Button.left)
@@ -328,7 +328,7 @@ def type_to_chat(text: str, coords: Coordinates = None) -> None:
         modifier_key = Key.ctrl
 
         # Click on chat input area
-        logger.debug(f"채팅 입력 영역 클릭: ({coords.chat_input_x}, {coords.chat_input_y})")
+        logger.debug(f"[MOUSE] 채팅 입력 영역 클릭: ({coords.chat_input_x}, {coords.chat_input_y})")
         _mouse.position = (coords.chat_input_x, coords.chat_input_y)
         time.sleep(0.1)
         _mouse.click(Button.left)
@@ -337,7 +337,7 @@ def type_to_chat(text: str, coords: Coordinates = None) -> None:
         # Split text: type "/" directly, paste Korean part separately
         if text.startswith("/"):
             # Type "/" directly with prefix delay
-            logger.debug("'/' 직접 입력 (슬래시 딜레이 0.3초)")
+            logger.debug("[KEYBOARD] '/' 직접 입력 (슬래시 딜레이 0.3초)")
             _keyboard.type("/")
             time.sleep(0.3)  # Slash delay - prevents command not being recognized
 
@@ -357,7 +357,7 @@ def type_to_chat(text: str, coords: Coordinates = None) -> None:
                     time.sleep(0.2)
 
                 # Paste (Ctrl+V)
-                logger.debug(f"붙여넣기: {modifier_key}+V")
+                logger.debug(f"[KEYBOARD] 붙여넣기: Ctrl+V (modifier={modifier_key})")
                 with _keyboard.pressed(modifier_key):
                     _keyboard.press('v')
                     _keyboard.release('v')
@@ -369,14 +369,14 @@ def type_to_chat(text: str, coords: Coordinates = None) -> None:
             time.sleep(0.1)
 
             # Paste (Ctrl+V)
-            logger.debug(f"붙여넣기: {modifier_key}+V")
+            logger.debug(f"[KEYBOARD] 붙여넣기: Ctrl+V (modifier={modifier_key})")
             with _keyboard.pressed(modifier_key):
                 _keyboard.press('v')
                 _keyboard.release('v')
             time.sleep(0.3)  # Wait after paste before Enter
 
         # Press Enter twice - required for KakaoTalk
-        logger.debug("Enter 키 전송 (2회) - 붙여넣기 후 딜레이 적용됨")
+        logger.debug("[KEYBOARD] Enter 키 전송 (2회)")
         _keyboard.press(Key.enter)
         _keyboard.release(Key.enter)
         time.sleep(0.1)

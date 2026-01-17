@@ -1,7 +1,11 @@
 """Base strategy interface"""
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..config.settings import Settings
+
 from ..core.state import GameState
 
 
@@ -34,6 +38,9 @@ class Action(Enum):
 class Strategy(ABC):
     """Abstract base class for decision strategies"""
 
+    # Optional attributes that subclasses may implement
+    settings: Optional["Settings"] = None
+
     @abstractmethod
     def decide(self, state: GameState) -> Action:
         """
@@ -59,6 +66,10 @@ class Strategy(ABC):
 
     def reset(self) -> None:
         """Reset strategy state (if any)"""
+        pass
+
+    def update_config(self, **kwargs) -> None:
+        """Update strategy configuration (optional override)"""
         pass
 
 

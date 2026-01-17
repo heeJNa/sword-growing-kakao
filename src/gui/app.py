@@ -229,6 +229,9 @@ class MacroApp:
         # Load cumulative stats and update chart on startup
         self._load_and_show_cumulative_stats()
 
+        # Set initial target level display
+        self.status_panel.update_target_level(self.settings.target_level)
+
     def _setup_system_tray(self) -> None:
         """Setup system tray for minimize to tray"""
         self.system_tray = None
@@ -575,6 +578,8 @@ class MacroApp:
         """Apply new settings"""
         self.settings = settings
         self.macro.update_settings(settings)
+        # Update target level display in status panel
+        self.status_panel.update_target_level(settings.target_level)
         logger.info(f"설정 적용: target_level={settings.target_level}")
 
     def _apply_coords(self, coords: Coordinates) -> None:

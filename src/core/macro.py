@@ -1,8 +1,9 @@
 """Main macro runner module"""
+import copy
 import time
 import threading
-from typing import Optional, Callable
-from datetime import datetime
+from typing import Optional, Callable, Tuple
+from dataclasses import dataclass
 from .state import GameState, MacroState, EnhanceResult
 from .parser import parse_chat, parse_profile
 from .actions import enhance, sell, check_status
@@ -15,6 +16,21 @@ from ..config.coordinates import Coordinates, DEFAULT_COORDINATES
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+# === Y Offset Constants ===
+@dataclass(frozen=True)
+class YOffsetConfig:
+    """Y offset configuration for clipboard reading based on level."""
+    HIGH_LEVEL_THRESHOLD: int = 9
+    DEFAULT_OFFSET: int = 0
+    HIGH_LEVEL_OFFSET: int = -60
+    RETRY_OFFSET_LOW: int = -40
+    RETRY_OFFSET_HIGH: int = -70
+    RETRY_OFFSET_ADJUST: int = 10
+
+
+Y_OFFSET_CONFIG = YOffsetConfig()
 
 
 class MacroRunner:
@@ -43,6 +59,7 @@ class MacroRunner:
         # State
         self.game_state = GameState()
         self.macro_state = MacroState.IDLE
+        self._state_lock = threading.Lock()  # Thread safety for game_state access
 
         # Threading
         self._thread: Optional[threading.Thread] = None
@@ -79,10 +96,13 @@ class MacroRunner:
                 pass
 
     def _notify_state_change(self) -> None:
-        """Notify callback of game state change"""
+        """Notify callback of game state change (thread-safe)"""
         if self._on_state_change:
             try:
-                self._on_state_change(self.game_state)
+                # Create a copy of game_state to avoid race conditions
+                with self._state_lock:
+                    state_copy = copy.copy(self.game_state)
+                self._on_state_change(state_copy)
             except Exception:
                 pass
 
@@ -185,31 +205,121 @@ class MacroRunner:
             self._notify_error(e)
             return False
 
-    def _auto_loop(self) -> None:
-        """Main auto-mode loop"""
-        logger.info("=== 자동 모드 루프 시작 ===")
-        logger.info(f"현재 좌표: output=({self.coords.chat_output_x}, {self.coords.chat_output_y}), input=({self.coords.chat_input_x}, {self.coords.chat_input_y})")
-        logger.info(f"설정: target_level={self.settings.target_level}, action_delay={self.settings.action_delay}")
+    # === Helper methods for _auto_loop (extracted for readability) ===
 
-        self._set_macro_state(MacroState.RUNNING)
+    def _get_y_offset_for_level(self, level: int) -> int:
+        """Get appropriate y_offset based on current level."""
+        return (Y_OFFSET_CONFIG.HIGH_LEVEL_OFFSET
+                if level >= Y_OFFSET_CONFIG.HIGH_LEVEL_THRESHOLD
+                else Y_OFFSET_CONFIG.DEFAULT_OFFSET)
 
-        # === 프로필 확인으로 초기 상태 설정 ===
+    def _read_chat_with_retry(self, y_offset: int, clipboard_before: str = None) -> str:
+        """
+        Read chat content with retry logic for empty or stale clipboard.
+
+        Args:
+            y_offset: Y coordinate offset for reading
+            clipboard_before: Previous clipboard content to compare (for stale detection)
+
+        Returns:
+            Chat text content
+        """
+        max_retries = 3
+        chat_text = ""
+
+        for retry in range(max_retries):
+            logger.debug(f"채팅 상태 확인 중... (시도 {retry + 1}/{max_retries}, y_offset={y_offset})")
+            chat_text = check_status(self.coords, self.settings, y_offset=y_offset)
+
+            # Check if clipboard is empty
+            if not chat_text or len(chat_text.strip()) == 0:
+                logger.warning(f"클립보드 내용 없음 - 재시도 대기 ({self.settings.retry_delay}초)")
+                time.sleep(self.settings.retry_delay)
+                continue
+
+            # Check if clipboard content is same as before action (stale)
+            if clipboard_before and chat_text == clipboard_before and retry < max_retries - 1:
+                logger.warning(f"클립보드 내용이 액션 전과 동일 - 새 결과 대기 ({self.settings.retry_delay}초)")
+                time.sleep(self.settings.retry_delay)
+                continue
+
+            # Valid new content
+            logger.debug(f"새로운 클립보드 내용 확인됨 (길이: {len(chat_text)})")
+            break
+
+        return chat_text
+
+    def _parse_with_offset_retry(
+        self, chat_text: str, current_level: int, y_offset: int
+    ) -> Tuple[EnhanceResult, GameState, int]:
+        """
+        Parse chat text with stepped y-offset retry strategy.
+
+        Returns:
+            Tuple of (result, state, failure_count)
+        """
+        result, state = parse_chat(chat_text)
+        parse_failure_count = 0 if result != EnhanceResult.UNKNOWN else 1
+
+        if result == EnhanceResult.UNKNOWN:
+            # Retry phase 1: same y_offset
+            logger.warning(f"파싱 실패 #{parse_failure_count}")
+            time.sleep(self.settings.retry_delay)
+            chat_text = check_status(self.coords, self.settings, y_offset=y_offset)
+            result, state = parse_chat(chat_text)
+            if result == EnhanceResult.UNKNOWN:
+                parse_failure_count += 1
+                logger.warning(f"파싱 실패 #{parse_failure_count}")
+
+        # Step 1: After 2 failures, try different y_offset based on level
+        if result == EnhanceResult.UNKNOWN and parse_failure_count >= 2:
+            adjusted_offset = (Y_OFFSET_CONFIG.RETRY_OFFSET_HIGH
+                              if current_level >= Y_OFFSET_CONFIG.HIGH_LEVEL_THRESHOLD
+                              else Y_OFFSET_CONFIG.RETRY_OFFSET_LOW)
+            logger.warning(f"2회 연속 실패 - y좌표 {adjusted_offset}으로 재시도 (레벨 {current_level})")
+            for _ in range(2):
+                time.sleep(self.settings.retry_delay)
+                chat_text = check_status(self.coords, self.settings, y_offset=adjusted_offset)
+                result, state = parse_chat(chat_text)
+                if result != EnhanceResult.UNKNOWN:
+                    break
+                parse_failure_count += 1
+                logger.warning(f"파싱 실패 #{parse_failure_count}")
+
+        # Step 2: After 4 failures, try original coord + adjustment
+        if result == EnhanceResult.UNKNOWN and parse_failure_count >= 4:
+            adjusted_offset = y_offset + Y_OFFSET_CONFIG.RETRY_OFFSET_ADJUST
+            logger.warning(f"4회 연속 실패 - y좌표 {adjusted_offset}으로 재시도")
+            for _ in range(2):
+                time.sleep(self.settings.retry_delay)
+                chat_text = check_status(self.coords, self.settings, y_offset=adjusted_offset)
+                result, state = parse_chat(chat_text)
+                if result != EnhanceResult.UNKNOWN:
+                    break
+                parse_failure_count += 1
+                logger.warning(f"파싱 실패 #{parse_failure_count}")
+
+        return result, state, parse_failure_count
+
+    def _initialize_session(self) -> None:
+        """Initialize session by checking profile and starting stats."""
         logger.info("=== 프로필 확인 중... ===")
         try:
             logger.info("프로필 명령 전송: /프로필")
             type_to_chat("/프로필", self.coords)
-            time.sleep(self.settings.profile_check_delay)  # Wait for response
+            time.sleep(self.settings.profile_check_delay)
 
             chat_text = check_status(self.coords, self.settings)
             profile = parse_profile(chat_text)
 
             if profile:
-                if profile.level is not None:
-                    self.game_state.level = profile.level
-                if profile.gold is not None:
-                    self.game_state.gold = profile.gold
-                if profile.sword_name:
-                    self.game_state.sword_name = profile.sword_name
+                with self._state_lock:
+                    if profile.level is not None:
+                        self.game_state.level = profile.level
+                    if profile.gold is not None:
+                        self.game_state.gold = profile.gold
+                    if profile.sword_name:
+                        self.game_state.sword_name = profile.sword_name
 
                 logger.info(f"=== 초기 상태 확인 완료 ===")
                 logger.info(f"    현재 레벨: +{self.game_state.level}강")
@@ -223,10 +333,19 @@ class MacroRunner:
             logger.error(f"프로필 확인 에러: {e}")
 
         time.sleep(self.settings.action_delay)
-
-        # Start stats session
         self.stats.start_session(self.game_state.gold)
         logger.info(f"세션 시작: starting_gold={self.game_state.gold:,}")
+
+    def _auto_loop(self) -> None:
+        """Main auto-mode loop"""
+        logger.info("=== 자동 모드 루프 시작 ===")
+        logger.info(f"현재 좌표: output=({self.coords.chat_output_x}, {self.coords.chat_output_y}), input=({self.coords.chat_input_x}, {self.coords.chat_input_y})")
+        logger.info(f"설정: target_level={self.settings.target_level}, action_delay={self.settings.action_delay}")
+
+        self._set_macro_state(MacroState.RUNNING)
+
+        # Initialize session (profile check + stats start)
+        self._initialize_session()
 
         consecutive_errors = 0
         max_errors = 5
@@ -266,12 +385,10 @@ class MacroRunner:
                 gold_before = self.game_state.gold
                 current_level = self.game_state.level
 
-                # Determine y_offset before action (same offset will be used for comparison)
-                # Use -60 for level 9+ (extra messages/images)
-                y_offset = -60 if current_level >= 9 else 0
+                # Determine y_offset based on level
+                y_offset = self._get_y_offset_for_level(current_level)
 
-                # Store clipboard content before action for comparison later
-                # IMPORTANT: Use same y_offset as will be used after action
+                # Store clipboard content before action for stale detection
                 clipboard_before_action = check_status(self.coords, self.settings, y_offset=y_offset)
 
                 if action == Action.ENHANCE:
@@ -293,85 +410,21 @@ class MacroRunner:
                     time.sleep(self.settings.action_delay)
                     continue
 
-                # y_offset is already determined above (before clipboard_before_action)
-
-                # Read result (wait for response)
+                # Read result with retry logic
                 logger.debug(f"결과 읽기 대기 ({self.settings.result_check_delay}초)")
                 time.sleep(self.settings.result_check_delay)
 
-                # === Clipboard retry logic: check for empty or same as before action ===
-                max_clipboard_retries = 3
-                chat_text = ""
-
-                for clipboard_retry in range(max_clipboard_retries):
-                    logger.debug(f"채팅 상태 확인 중... (시도 {clipboard_retry + 1}/{max_clipboard_retries}, y_offset={y_offset})")
-                    chat_text = check_status(self.coords, self.settings, y_offset=y_offset)
-
-                    # Check if clipboard is empty
-                    if not chat_text or len(chat_text.strip()) == 0:
-                        logger.warning(f"클립보드 내용 없음 - 재시도 대기 ({self.settings.retry_delay}초)")
-                        time.sleep(self.settings.retry_delay)
-                        continue
-
-                    # Check if clipboard content is same as before action (stale clipboard)
-                    if chat_text == clipboard_before_action and clipboard_retry < max_clipboard_retries - 1:
-                        logger.warning(f"클립보드 내용이 액션 전과 동일 - 새 결과 대기 ({self.settings.retry_delay}초)")
-                        time.sleep(self.settings.retry_delay)
-                        continue
-
-                    # Valid new content - break out of retry loop
-                    logger.debug(f"새로운 클립보드 내용 확인됨 (길이: {len(chat_text)})")
-                    break
-
+                # Read chat with retry (handles empty/stale clipboard)
+                chat_text = self._read_chat_with_retry(y_offset, clipboard_before_action)
                 logger.debug(f"채팅 텍스트 (마지막 200자): ...{chat_text[-200:] if len(chat_text) > 200 else chat_text}")
 
-                result, state = parse_chat(chat_text)
+                # Parse with y-offset retry strategy
+                result, state, parse_failure_count = self._parse_with_offset_retry(
+                    chat_text, current_level, y_offset
+                )
                 logger.info(f"파싱 결과: result={result.value}, parsed_level={state.level}, parsed_gold={state.gold}")
 
-                # If parsing failed (UNKNOWN), use stepped y-offset retry strategy
-                # Step 1: 2 failures → try y_offset -10 additional
-                # Step 2: 2 more failures → try original coord +10
-                # Step 3: 2 more failures → stop
-                parse_failure_count = 0 if result != EnhanceResult.UNKNOWN else 1
-
-                if result == EnhanceResult.UNKNOWN:
-                    # Retry phase 1: current y_offset (already tried once)
-                    logger.warning(f"파싱 실패 #{parse_failure_count}")
-                    time.sleep(self.settings.retry_delay)
-                    chat_text = check_status(self.coords, self.settings, y_offset=y_offset)
-                    result, state = parse_chat(chat_text)
-                    if result == EnhanceResult.UNKNOWN:
-                        parse_failure_count += 1
-                        logger.warning(f"파싱 실패 #{parse_failure_count}")
-
-                # Step 1: After 2 failures, try different y_offset based on level
-                # Level < 9: use -40, Level >= 9: use -70
-                if result == EnhanceResult.UNKNOWN and parse_failure_count >= 2:
-                    adjusted_offset = -70 if current_level >= 9 else -40
-                    logger.warning(f"2회 연속 실패 - y좌표 {adjusted_offset}으로 재시도 (레벨 {current_level})")
-                    for _ in range(2):
-                        time.sleep(self.settings.retry_delay)
-                        chat_text = check_status(self.coords, self.settings, y_offset=adjusted_offset)
-                        result, state = parse_chat(chat_text)
-                        if result != EnhanceResult.UNKNOWN:
-                            break
-                        parse_failure_count += 1
-                        logger.warning(f"파싱 실패 #{parse_failure_count}")
-
-                # Step 2: After 4 failures, try original coord +10
-                if result == EnhanceResult.UNKNOWN and parse_failure_count >= 4:
-                    adjusted_offset = y_offset + 10
-                    logger.warning(f"4회 연속 실패 - y좌표 {adjusted_offset}으로 재시도")
-                    for _ in range(2):
-                        time.sleep(self.settings.retry_delay)
-                        chat_text = check_status(self.coords, self.settings, y_offset=adjusted_offset)
-                        result, state = parse_chat(chat_text)
-                        if result != EnhanceResult.UNKNOWN:
-                            break
-                        parse_failure_count += 1
-                        logger.warning(f"파싱 실패 #{parse_failure_count}")
-
-                # Step 3: After 6 failures, stop
+                # Stop after 6 consecutive parse failures
                 if result == EnhanceResult.UNKNOWN and parse_failure_count >= 6:
                     logger.error(f"파싱 6회 연속 실패 - 작업 종료")
                     break
