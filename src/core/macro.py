@@ -171,7 +171,7 @@ class MacroRunner:
             logger.debug(f"결과 대기 ({self.settings.result_check_delay}초)")
             time.sleep(self.settings.result_check_delay)
             logger.debug("채팅 상태 확인 중...")
-            chat_text = check_status(self.coords, self.settings)
+            chat_text = check_status(self.coords, self.settings) or ""
             logger.debug(f"채팅 텍스트 길이: {len(chat_text)}")
 
             result, state = parse_chat(chat_text)
@@ -215,7 +215,7 @@ class MacroRunner:
 
             # Read result
             time.sleep(0.5)
-            chat_text = check_status(self.coords, self.settings)
+            chat_text = check_status(self.coords, self.settings) or ""
             _, state = parse_chat(chat_text)
 
             # Update state
@@ -261,7 +261,7 @@ class MacroRunner:
 
         for retry in range(max_retries):
             logger.debug(f"채팅 상태 확인 중... (시도 {retry + 1}/{max_retries}, y_offset={y_offset})")
-            chat_text = check_status(self.coords, self.settings, y_offset=y_offset)
+            chat_text = check_status(self.coords, self.settings, y_offset=y_offset) or ""
 
             # Check if clipboard is empty
             if not chat_text or len(chat_text.strip()) == 0:
@@ -286,7 +286,7 @@ class MacroRunner:
                     continue
 
             # Valid new content
-            logger.debug(f"새로운 클립보드 내용 확인됨 (길이: {len(chat_text)})")
+            logger.debug(f"새로운 클립보드 내용 확인됨 (길이: {len(chat_text) if chat_text else 0})")
             break
 
         return chat_text
@@ -307,7 +307,7 @@ class MacroRunner:
             # Retry phase 1: same y_offset
             logger.warning(f"파싱 실패 #{parse_failure_count}")
             time.sleep(self.settings.retry_delay)
-            chat_text = check_status(self.coords, self.settings, y_offset=y_offset)
+            chat_text = check_status(self.coords, self.settings, y_offset=y_offset) or ""
             result, state = parse_chat(chat_text)
             if result == EnhanceResult.UNKNOWN:
                 parse_failure_count += 1
@@ -323,7 +323,7 @@ class MacroRunner:
             logger.warning(f"2회 연속 실패 - y좌표 {adjusted_offset}으로 재시도 (레벨 {current_level})")
             for _ in range(2):
                 time.sleep(self.settings.retry_delay)
-                chat_text = check_status(self.coords, self.settings, y_offset=adjusted_offset)
+                chat_text = check_status(self.coords, self.settings, y_offset=adjusted_offset) or ""
                 result, state = parse_chat(chat_text)
                 if result != EnhanceResult.UNKNOWN:
                     break
@@ -336,7 +336,7 @@ class MacroRunner:
             logger.warning(f"4회 연속 실패 - y좌표 {adjusted_offset}으로 재시도")
             for _ in range(2):
                 time.sleep(self.settings.retry_delay)
-                chat_text = check_status(self.coords, self.settings, y_offset=adjusted_offset)
+                chat_text = check_status(self.coords, self.settings, y_offset=adjusted_offset) or ""
                 result, state = parse_chat(chat_text)
                 if result != EnhanceResult.UNKNOWN:
                     break
@@ -353,7 +353,7 @@ class MacroRunner:
             type_to_chat("/프로필", self.coords)
             time.sleep(self.settings.profile_check_delay)
 
-            chat_text = check_status(self.coords, self.settings)
+            chat_text = check_status(self.coords, self.settings) or ""
             profile = parse_profile(chat_text)
 
             if profile:
@@ -433,7 +433,7 @@ class MacroRunner:
                 y_offset = self._get_y_offset_for_level(current_level)
 
                 # Store clipboard content before action for stale detection
-                clipboard_before_action = check_status(self.coords, self.settings, y_offset=y_offset)
+                clipboard_before_action = check_status(self.coords, self.settings, y_offset=y_offset) or ""
 
                 if action == Action.ENHANCE:
                     logger.info(f"강화 실행 (현재 {current_level}강)")
@@ -460,7 +460,7 @@ class MacroRunner:
 
                 # Read chat with retry (handles empty/stale clipboard)
                 chat_text = self._read_chat_with_retry(y_offset, clipboard_before_action)
-                logger.debug(f"채팅 텍스트 (마지막 200자): ...{chat_text[-200:] if len(chat_text) > 200 else chat_text}")
+                logger.debug(f"채팅 텍스트 (마지막 200자): ...{chat_text[-200:] if chat_text and len(chat_text) > 200 else (chat_text or '')}")
 
                 # Parse with y-offset retry strategy
                 result, state, parse_failure_count = self._parse_with_offset_retry(
@@ -484,7 +484,7 @@ class MacroRunner:
                     # Check profile to get current level and gold
                     type_to_chat("/프로필", self.coords)
                     time.sleep(self.settings.profile_check_delay)
-                    profile_text = check_status(self.coords, self.settings)
+                    profile_text = check_status(self.coords, self.settings) or ""
                     profile = parse_profile(profile_text)
 
                     if profile:
@@ -543,7 +543,7 @@ class MacroRunner:
                     if is_stale:
                         logger.info(f"추가 대기 ({self.settings.stale_result_delay}초) 후 재확인...")
                         time.sleep(self.settings.stale_result_delay)
-                        chat_text = check_status(self.coords, self.settings, y_offset=y_offset)
+                        chat_text = check_status(self.coords, self.settings, y_offset=y_offset) or ""
                         result, state = parse_chat(chat_text)
                         logger.info(f"재확인 결과: result={result.value}, parsed_level={state.level}, parsed_gold={state.gold}")
 
@@ -557,7 +557,7 @@ class MacroRunner:
                         if still_stale:
                             logger.warning(f"여전히 오래된 결과 - 추가 대기 ({self.settings.stale_result_delay * 2}초) 후 마지막 시도")
                             time.sleep(self.settings.stale_result_delay * 2)
-                            chat_text = check_status(self.coords, self.settings, y_offset=y_offset)
+                            chat_text = check_status(self.coords, self.settings, y_offset=y_offset) or ""
                             result, state = parse_chat(chat_text)
                             logger.info(f"최종 결과: result={result.value}, parsed_level={state.level}, parsed_gold={state.gold}")
 

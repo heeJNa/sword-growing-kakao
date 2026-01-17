@@ -136,7 +136,7 @@ def parse_message(text: str) -> ParsedMessage:
     Returns:
         ParsedMessage with all extracted data
     """
-    logger.debug(f"메시지 파싱 시작 (길이: {len(text)}자)")
+    logger.debug(f"메시지 파싱 시작 (길이: {len(text) if text else 0}자)")
 
     # 성공 체크
     success_match = re.search(RESULT_PATTERNS["success"], text)
