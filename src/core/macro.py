@@ -465,8 +465,12 @@ class MacroRunner:
                     old_level = self.game_state.level
                     self.game_state.update_from_result(result, state.level, state.gold)
                     logger.info(f"상태 업데이트: {old_level}강 -> {self.game_state.level}강 (결과: {result.value})")
+                    # Always record at old_level (level before enhancement)
+                    # - SUCCESS: old_level is the level that was enhanced
+                    # - MAINTAIN: old_level is the current level (unchanged)
+                    # - DESTROY: old_level is the level that was destroyed (not 0)
                     self.stats.record_enhance(
-                        self.game_state.level if result != EnhanceResult.SUCCESS else self.game_state.level - 1,
+                        old_level,
                         result,
                         gold_before,
                         self.game_state.gold
