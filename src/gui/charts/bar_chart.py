@@ -39,6 +39,7 @@ class LevelProbabilityChart:
             self.label = tk.Label(parent, text="차트 표시 불가 (matplotlib 필요)")
             self.label.pack(fill="both", expand=True)
             self.canvas = None
+            self.figure = None
             return
 
         # Create matplotlib figure
@@ -63,8 +64,8 @@ class LevelProbabilityChart:
         # Tooltip annotation
         self._tooltip = None
 
-        # Connect hover event
-        self.canvas.mpl_connect('motion_notify_event', self._on_hover)
+        # Connect hover event and store connection ID for cleanup
+        self._hover_cid = self.canvas.mpl_connect('motion_notify_event', self._on_hover)
 
         # Initial empty chart
         self._draw_empty()
@@ -207,3 +208,46 @@ class LevelProbabilityChart:
             self._tooltip.remove()
             self._tooltip = None
             self.canvas.draw_idle()
+
+    def destroy(self) -> None:
+        """Clean up matplotlib resources to prevent memory leaks"""
+        # Disconnect event handler to break circular reference
+        if hasattr(self, '_hover_cid') and self._hover_cid is not None and self.canvas:
+            try:
+                self.canvas.mpl_disconnect(self._hover_cid)
+            except Exception:
+                pass
+            self._hover_cid = None
+
+        # Remove tooltip if visible
+        if hasattr(self, '_tooltip') and self._tooltip is not None:
+            try:
+                self._tooltip.remove()
+            except Exception:
+                pass
+            self._tooltip = None
+
+        # Clear bar references
+        if hasattr(self, '_all_bars'):
+            self._all_bars.clear()
+        if hasattr(self, '_bar_info'):
+            self._bar_info.clear()
+
+        # Destroy canvas widget
+        if self.canvas:
+            try:
+                self.canvas.get_tk_widget().destroy()
+            except Exception:
+                pass
+
+        # Close figure to release memory
+        if self.figure:
+            try:
+                self.figure.clear()
+                import matplotlib.pyplot as plt
+                plt.close(self.figure)
+            except Exception:
+                pass
+            self.figure = None
+
+        self.canvas = None

@@ -55,6 +55,10 @@ class MacroApp:
         # Thread-safe queue for callbacks from background threads
         self._callback_queue = queue.Queue()
 
+        # Dirty flag for chart updates - only redraw when data changes
+        self._chart_dirty = False
+        self._last_enhance_count = 0
+
         # Check single instance
         if not ensure_single_instance("sword-macro"):
             logger.error("이미 실행 중인 인스턴스가 있습니다!")
@@ -382,9 +386,14 @@ class MacroApp:
             if self.stats_collector.session:
                 self.stats_panel.update_stats(self.stats_collector.session)
 
-                # Update chart with combined stats (cumulative + current session)
-                combined_stats = self._get_combined_level_stats()
-                self.bar_chart.update(combined_stats)
+                # Only update chart when data has changed (dirty flag pattern)
+                # This reduces CPU usage significantly
+                current_count = self.stats_collector.session.total_enhances
+                if self._chart_dirty or current_count != self._last_enhance_count:
+                    combined_stats = self._get_combined_level_stats()
+                    self.bar_chart.update(combined_stats)
+                    self._chart_dirty = False
+                    self._last_enhance_count = current_count
 
             # Schedule next update
             if not self._shutting_down:
@@ -418,6 +427,9 @@ class MacroApp:
         if self._shutting_down:
             return
         logger.info(f"강화 결과: {result.value}")
+
+        # Mark chart as dirty so it will be updated on next GUI cycle
+        self._chart_dirty = True
 
         # Enhancement results are now shown in the info_log_panel via logger.info()
 
@@ -756,6 +768,12 @@ Mac 손쉬운 사용 권한 안내
             pass
         try:
             self.info_log_panel.destroy()
+        except Exception:
+            pass
+
+        # Destroy chart widgets to release matplotlib resources
+        try:
+            self.bar_chart.destroy()
         except Exception:
             pass
 

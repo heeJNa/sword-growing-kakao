@@ -26,6 +26,7 @@ class CalibrationDialog:
         self._capturing = False
         self._capture_target = None
         self._mouse_listener = None
+        self._timeout_timer = None  # Timer for capture timeout
         self._callback_queue = queue.Queue()  # Thread-safe queue for callbacks
         self._shutting_down = False
 
@@ -235,7 +236,13 @@ class CalibrationDialog:
                 # Use thread-safe queue for tkinter updates
                 self._safe_after(lambda: self.status_label.config(text="⚠️ 타임아웃 - 다시 시도해주세요"))
 
-        threading.Timer(10.0, timeout).start()
+        # Cancel previous timer if exists
+        if self._timeout_timer:
+            self._timeout_timer.cancel()
+
+        # Store timer reference for cleanup
+        self._timeout_timer = threading.Timer(10.0, timeout)
+        self._timeout_timer.start()
 
     def _set_coords(self, target: str, x: int, y: int) -> None:
         """Set coordinates in entry fields"""
@@ -343,8 +350,18 @@ class CalibrationDialog:
         self._shutting_down = True
         self._capturing = False
 
-        # Stop mouse listener if running
+        # Cancel timeout timer if running
+        if self._timeout_timer:
+            self._timeout_timer.cancel()
+            self._timeout_timer = None
+
+        # Stop mouse listener if running and wait for it to finish
         if self._mouse_listener:
             self._mouse_listener.stop()
+            try:
+                self._mouse_listener.join(timeout=1.0)
+            except Exception:
+                pass
+            self._mouse_listener = None
 
         self.dialog.destroy()

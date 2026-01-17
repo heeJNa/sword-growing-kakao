@@ -22,6 +22,7 @@ class SystemTray:
 
         self._icon: Optional[pystray.Icon] = None
         self._thread: Optional[threading.Thread] = None
+        self._icon_image: Optional[Image.Image] = None  # Store for cleanup
         self._running = False
 
     def _create_icon_image(self, size: int = 64) -> Image.Image:
@@ -109,12 +110,12 @@ class SystemTray:
             return
 
         self._running = True
-        icon_image = self._create_icon_image()
+        self._icon_image = self._create_icon_image()
         menu = self._create_menu()
 
         self._icon = pystray.Icon(
             name="sword_macro",
-            icon=icon_image,
+            icon=self._icon_image,
             title="검키우기 매크로",
             menu=menu,
         )
@@ -132,6 +133,22 @@ class SystemTray:
         if self._icon:
             self._icon.stop()
             self._icon = None
+
+        # Wait for thread to finish
+        if self._thread and self._thread.is_alive():
+            try:
+                self._thread.join(timeout=1.0)
+            except Exception:
+                pass
+            self._thread = None
+
+        # Clean up PIL image
+        if self._icon_image:
+            try:
+                self._icon_image.close()
+            except Exception:
+                pass
+            self._icon_image = None
 
     def update_title(self, title: str) -> None:
         """Update tray icon title/tooltip"""

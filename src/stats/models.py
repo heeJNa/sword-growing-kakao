@@ -1,8 +1,13 @@
 """Statistics data models"""
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, Deque, List, Optional
 from ..core.state import EnhanceResult
+
+# Maximum number of enhancement records to keep in memory per session
+# This prevents unbounded memory growth during long sessions
+MAX_HISTORY_SIZE = 10000
 
 
 @dataclass
@@ -119,7 +124,7 @@ class SessionStats:
     current_gold: int = 0
     max_level_reached: int = 0
     level_stats: Dict[int, LevelStats] = field(default_factory=dict)
-    history: List[EnhanceRecord] = field(default_factory=list)
+    history: Deque[EnhanceRecord] = field(default_factory=lambda: deque(maxlen=MAX_HISTORY_SIZE))
 
     def __post_init__(self):
         if not self.session_id:

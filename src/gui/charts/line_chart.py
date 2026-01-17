@@ -35,6 +35,7 @@ class GoldHistoryChart:
             self.label = tk.Label(parent, text="차트 표시 불가 (matplotlib 필요)")
             self.label.pack(fill="both", expand=True)
             self.canvas = None
+            self.figure = None
             return
 
         # Create matplotlib figure
@@ -110,3 +111,24 @@ class GoldHistoryChart:
         # Tight layout
         self.figure.tight_layout()
         self.canvas.draw()
+
+    def destroy(self) -> None:
+        """Clean up matplotlib resources to prevent memory leaks"""
+        # Destroy canvas widget
+        if self.canvas:
+            try:
+                self.canvas.get_tk_widget().destroy()
+            except Exception:
+                pass
+
+        # Close figure to release memory
+        if self.figure:
+            try:
+                self.figure.clear()
+                import matplotlib.pyplot as plt
+                plt.close(self.figure)
+            except Exception:
+                pass
+            self.figure = None
+
+        self.canvas = None

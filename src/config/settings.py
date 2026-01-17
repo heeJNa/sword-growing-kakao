@@ -28,7 +28,7 @@ class Settings:
     min_gold: int = 1000  # Minimum gold before selling
 
     # UI settings
-    gui_update_interval: int = 500  # milliseconds
+    gui_update_interval: int = 1000  # milliseconds (reduced from 500 to lower CPU usage)
     chart_update_interval: int = 1000  # milliseconds
 
     # File paths

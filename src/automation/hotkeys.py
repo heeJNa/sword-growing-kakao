@@ -85,6 +85,10 @@ class HotkeyListener:
         self._running = False
         if self._listener:
             self._listener.stop()
+            try:
+                self._listener.join(timeout=1.0)
+            except Exception:
+                pass
             self._listener = None
 
     def is_running(self) -> bool:
