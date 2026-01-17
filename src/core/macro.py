@@ -315,7 +315,9 @@ class MacroRunner:
 
         # Step 1: After 2 failures, try different y_offset based on level
         if result == EnhanceResult.UNKNOWN and parse_failure_count >= 2:
-            adjusted_offset = (Y_OFFSET_CONFIG.RETRY_OFFSET_HIGH
+            # 고레벨: 원래 offset - 20 (예: -65 - 20 = -85) - 이미지/멘트가 길어질 수 있음
+            # 저레벨: 고정값 -40
+            adjusted_offset = (y_offset - 20
                               if current_level >= Y_OFFSET_CONFIG.HIGH_LEVEL_THRESHOLD
                               else Y_OFFSET_CONFIG.RETRY_OFFSET_LOW)
             logger.warning(f"2회 연속 실패 - y좌표 {adjusted_offset}으로 재시도 (레벨 {current_level})")
