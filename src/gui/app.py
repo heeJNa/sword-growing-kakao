@@ -16,7 +16,7 @@ from .dialogs.settings_dialog import SettingsDialog
 from .dialogs.calibration_dialog import CalibrationDialog
 
 from ..core.macro import MacroRunner
-from ..core.state import GameState, MacroState, EnhanceResult
+from ..core.state import GameState, MacroState, MacroMode, EnhanceResult
 from ..config.settings import Settings
 from ..config.coordinates import Coordinates
 from ..stats.collector import StatsCollector
@@ -175,16 +175,24 @@ class MacroApp:
         auto_control = ttk.LabelFrame(left_frame, text="자동 모드", padding=5)
         auto_control.pack(fill="x", pady=(0, 5))
 
+        # Row 1: 시작 버튼들
         auto_row1 = ttk.Frame(auto_control)
         auto_row1.pack(fill="x", pady=2)
 
-        self.dash_start_btn = ttk.Button(auto_row1, text="▶ 시작", command=self._on_start)
+        self.dash_start_btn = ttk.Button(auto_row1, text="▶ 기본 시작", command=self._on_start)
         self.dash_start_btn.pack(side="left", padx=2, expand=True, fill="x")
 
-        self.dash_pause_btn = ttk.Button(auto_row1, text="⏸ 일시정지", command=self._on_pause, state="disabled")
+        self.dash_turbo_btn = ttk.Button(auto_row1, text="🚀 터보 시작", command=self._on_start_turbo)
+        self.dash_turbo_btn.pack(side="left", padx=2, expand=True, fill="x")
+
+        # Row 2: 제어 버튼들
+        auto_row2 = ttk.Frame(auto_control)
+        auto_row2.pack(fill="x", pady=2)
+
+        self.dash_pause_btn = ttk.Button(auto_row2, text="⏸ 일시정지", command=self._on_pause, state="disabled")
         self.dash_pause_btn.pack(side="left", padx=2, expand=True, fill="x")
 
-        self.dash_stop_btn = ttk.Button(auto_row1, text="■ 정지", command=self._on_stop, state="disabled")
+        self.dash_stop_btn = ttk.Button(auto_row2, text="■ 정지", command=self._on_stop, state="disabled")
         self.dash_stop_btn.pack(side="left", padx=2, expand=True, fill="x")
 
         # 수동 모드
@@ -460,14 +468,17 @@ class MacroApp:
         try:
             if status == MacroState.RUNNING:
                 self.dash_start_btn.config(state="disabled")
+                self.dash_turbo_btn.config(state="disabled")
                 self.dash_pause_btn.config(state="normal", text="⏸ 일시정지")
                 self.dash_stop_btn.config(state="normal")
             elif status == MacroState.PAUSED:
                 self.dash_start_btn.config(state="disabled")
+                self.dash_turbo_btn.config(state="disabled")
                 self.dash_pause_btn.config(state="normal", text="▶ 재개")
                 self.dash_stop_btn.config(state="normal")
             else:  # STOPPED, IDLE, ERROR
                 self.dash_start_btn.config(state="normal")
+                self.dash_turbo_btn.config(state="normal")
                 self.dash_pause_btn.config(state="disabled", text="⏸ 일시정지")
                 self.dash_stop_btn.config(state="disabled")
         except tk.TclError:
@@ -484,10 +495,16 @@ class MacroApp:
     # === Control Actions ===
 
     def _on_start(self) -> None:
-        """Start auto mode"""
+        """Start auto mode (normal)"""
         if not self.macro.is_running():
-            logger.info("자동 모드 시작")
-            self.macro.start_auto()
+            logger.info("기본 모드 시작")
+            self.macro.start_auto(MacroMode.NORMAL)
+
+    def _on_start_turbo(self) -> None:
+        """Start auto mode (turbo)"""
+        if not self.macro.is_running():
+            logger.info("터보 모드 시작")
+            self.macro.start_auto(MacroMode.TURBO)
 
     def _on_pause(self) -> None:
         """Pause/Resume auto mode"""

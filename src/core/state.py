@@ -47,6 +47,21 @@ class MacroState(Enum):
     ERROR = "error"
 
 
+class MacroMode(Enum):
+    """Macro execution mode"""
+    NORMAL = "normal"  # 기본 모드: 매 강화마다 결과 확인
+    TURBO = "turbo"    # 터보 모드: 1초 간격 강화, 100회마다 확인
+
+    @property
+    def display_name(self) -> str:
+        """Get Korean display name"""
+        names = {
+            MacroMode.NORMAL: "기본 모드",
+            MacroMode.TURBO: "터보 모드",
+        }
+        return names.get(self, "알 수 없음")
+
+
 @dataclass
 class GameState:
     """Current game state"""
