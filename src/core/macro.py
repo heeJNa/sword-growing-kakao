@@ -5,7 +5,7 @@ import time
 import threading
 from typing import Optional, Callable, Tuple
 from dataclasses import dataclass
-from .state import GameState, MacroState, EnhanceResult
+from .state import GameState, MacroState, MacroMode, EnhanceResult
 from .parser import parse_chat, parse_profile, RESULT_PATTERNS
 from .actions import enhance, sell, check_status
 from ..automation.clipboard import type_to_chat
@@ -524,15 +524,24 @@ class MacroRunner:
                     is_stale = False
 
                     # Special case: MAINTAIN with level = current_level + 1
-                    # This means a SUCCESS was missed in between (timing issue)
+                    # This means a SUCCESS was missed in between (timing/offset issue)
+                    # The clipboard captured an old MAINTAIN message but sword info shows new level
                     if result == EnhanceResult.MAINTAIN and state.level == current_level + 1:
                         logger.warning(f"중간 성공 누락 감지! 현재: {current_level}강 → 파싱: {state.level}강 (MAINTAIN)")
-                        logger.info(f"중간에 강화 성공이 있었음. 레벨을 {state.level}강으로 동기화")
-                        # Update current_level to match actual state, treat as MAINTAIN at new level
-                        current_level = state.level
-                        # Not stale, proceed with the MAINTAIN result
+                        logger.info(f"SUCCESS로 재분류: 실제 레벨이 {current_level}→{state.level}로 증가함")
+                        # Change result to SUCCESS since level actually increased
+                        result = EnhanceResult.SUCCESS
+                        # state.level already contains the correct new level (current_level + 1)
 
-                    elif result == EnhanceResult.SUCCESS and state.level != current_level + 1:
+                    # Special case: MAINTAIN/SUCCESS with level = 0
+                    # This means a DESTROY was missed (timing/offset issue)
+                    if result in (EnhanceResult.MAINTAIN, EnhanceResult.SUCCESS) and state.level == 0 and current_level > 0:
+                        logger.warning(f"중간 파괴 누락 감지! 현재: {current_level}강 → 파싱: 0강 ({result.value})")
+                        logger.info(f"DESTROY로 재분류: 실제 레벨이 0으로 리셋됨")
+                        # Change result to DESTROY since level reset to 0
+                        result = EnhanceResult.DESTROY
+
+                    if result == EnhanceResult.SUCCESS and state.level != current_level + 1:
                         logger.warning(f"결과가 오래됨 (SUCCESS) - 예상: {current_level + 1}강, 파싱: {state.level}강")
                         is_stale = True
                     elif result == EnhanceResult.MAINTAIN and state.level != current_level:
@@ -616,14 +625,124 @@ class MacroRunner:
         self.stats.end_session()
         self._set_macro_state(MacroState.STOPPED)
 
-    def start_auto(self) -> bool:
+    def _turbo_loop(self) -> None:
+        """
+        Turbo mode loop - fast enhancement without checking each result.
+
+        - 1초 간격으로 강화 명령 입력
+        - 100회마다 프로필 확인하여 현재 레벨 체크
+        - 목표 레벨 도달 시 정지
+        """
+        logger.info("=== 터보 모드 루프 시작 ===")
+        logger.info(f"설정: target_level={self.settings.target_level}, 확인 간격=100회")
+
+        self._set_macro_state(MacroState.RUNNING)
+
+        # Initialize session (프로필 확인 + 통계 시작)
+        self._initialize_session()
+
+        loop_count = 0
+        check_interval = 100  # 100회마다 확인
+        log_interval = 20  # 20회마다 진행 로그
+        turbo_delay = 1.0  # 1초 간격
+        consecutive_errors = 0
+        max_errors = 5
+
+        while not self._stop_event.is_set():
+            loop_count += 1
+
+            # Check for pause
+            if not self._pause_event.is_set():
+                logger.info("일시정지 대기 중...")
+            self._pause_event.wait()
+
+            if self._stop_event.is_set():
+                break
+
+            try:
+                # 강화 명령만 입력 (결과 확인 안 함)
+                enhance(self.coords, self.settings)
+
+                # 진행 상황 로그 (20회마다)
+                if loop_count % log_interval == 0 and loop_count % check_interval != 0:
+                    logger.info(f"터보 모드 진행 중... ({loop_count}회)")
+
+                # 100회마다 프로필 확인
+                if loop_count % check_interval == 0:
+                    logger.info(f"=== {loop_count}회 도달, 프로필 확인 중... ===")
+                    time.sleep(self.settings.result_check_delay)  # 마지막 강화 결과 대기
+
+                    # 프로필 확인
+                    type_to_chat("/프로필", self.coords)
+                    time.sleep(self.settings.profile_check_delay)
+
+                    chat_text = check_status(self.coords, self.settings) or ""
+                    profile = parse_profile(chat_text)
+
+                    if profile:
+                        # Thread-safe 상태 업데이트 및 조건 체크
+                        with self._state_lock:
+                            if profile.level is not None:
+                                self.game_state.level = profile.level
+                            if profile.gold is not None:
+                                self.game_state.gold = profile.gold
+                            if profile.sword_name:
+                                self.game_state.sword_name = profile.sword_name
+
+                            # Lock 내에서 현재 값 복사
+                            current_level = self.game_state.level
+                            current_gold = self.game_state.gold
+
+                        logger.info(f"현재 상태: +{current_level}강, {current_gold:,} G")
+                        self._notify_state_change()
+
+                        # 목표 레벨 도달 확인
+                        if current_level >= self.settings.target_level:
+                            logger.info(f"🎉 목표 레벨 {self.settings.target_level}강 도달! 정지합니다.")
+                            break
+
+                        # 골드 부족 확인
+                        if current_gold < self.settings.min_gold:
+                            logger.warning(f"골드 부족! 현재: {current_gold:,} < 최소: {self.settings.min_gold:,}")
+                            break
+                    else:
+                        logger.warning("프로필 파싱 실패, 계속 진행")
+
+                # 1초 대기
+                time.sleep(turbo_delay)
+
+                # Reset error counter on success
+                consecutive_errors = 0
+
+            except Exception as e:
+                consecutive_errors += 1
+                logger.error(f"터보 모드 에러 #{consecutive_errors}: {type(e).__name__}: {e}", exc_info=True)
+                self._notify_error(e)
+
+                if consecutive_errors >= max_errors:
+                    logger.error(f"연속 에러 {max_errors}회 도달, 터보 모드 종료")
+                    self._set_macro_state(MacroState.ERROR)
+                    break
+
+                time.sleep(turbo_delay * 2)
+
+        # End session
+        logger.info(f"=== 터보 모드 루프 종료 (총 {loop_count}회 반복) ===")
+        self.stats.end_session()
+        if self.macro_state != MacroState.ERROR:
+            self._set_macro_state(MacroState.STOPPED)
+
+    def start_auto(self, mode: MacroMode = MacroMode.NORMAL) -> bool:
         """
         Start auto-mode loop in background thread.
+
+        Args:
+            mode: MacroMode.NORMAL (기본) or MacroMode.TURBO (터보)
 
         Returns:
             True if started successfully
         """
-        logger.info("start_auto() 호출됨")
+        logger.info(f"start_auto() 호출됨 (mode={mode.value})")
         logger.debug(f"현재 상태: macro_state={self.macro_state}, thread={self._thread}, stop_event={self._stop_event.is_set()}")
 
         # Check if thread exists and is still alive
@@ -645,10 +764,16 @@ class MacroRunner:
         self.macro_state = MacroState.IDLE
         logger.debug("매크로 상태 IDLE로 초기화")
 
-        logger.info("자동 모드 스레드 생성 중...")
-        self._thread = threading.Thread(target=self._auto_loop, daemon=True)
+        # Select loop based on mode
+        if mode == MacroMode.TURBO:
+            logger.info("터보 모드 스레드 생성 중...")
+            self._thread = threading.Thread(target=self._turbo_loop, daemon=True)
+        else:
+            logger.info("기본 모드 스레드 생성 중...")
+            self._thread = threading.Thread(target=self._auto_loop, daemon=True)
+
         self._thread.start()
-        logger.info("자동 모드 스레드 시작됨")
+        logger.info(f"{mode.display_name} 스레드 시작됨")
 
         return True
 
