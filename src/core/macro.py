@@ -53,10 +53,14 @@ class YOffsetConfig:
     """Y offset configuration for clipboard reading based on level."""
     HIGH_LEVEL_THRESHOLD: int = 9
     DEFAULT_OFFSET: int = 0
-    HIGH_LEVEL_OFFSET: int = -65
-    RETRY_OFFSET_LOW: int = -40
-    RETRY_OFFSET_HIGH: int = -70
-    RETRY_OFFSET_ADJUST: int = 10
+    # 9강 이상일 때 시도할 오프셋 리스트 (순서대로 시도)
+    # - 0: 유지/파괴는 메시지가 짧아서 기본값으로 충분
+    # - -65, -85, -105: 성공 시 축하 이미지/멘트로 인해 점점 더 위로
+    OFFSETS_HIGH_LEVEL: tuple = (0, -65, -85, -105)
+    # 9강 미만일 때 시도할 오프셋 리스트
+    # - 0: 기본값
+    # - -40: 메시지가 조금 길어질 경우
+    OFFSETS_LOW_LEVEL: tuple = (0, -40)
 
 
 Y_OFFSET_CONFIG = YOffsetConfig()
@@ -236,11 +240,12 @@ class MacroRunner:
 
     # === Helper methods for _auto_loop (extracted for readability) ===
 
-    def _get_y_offset_for_level(self, level: int) -> int:
-        """Get appropriate y_offset based on current level."""
-        return (Y_OFFSET_CONFIG.HIGH_LEVEL_OFFSET
-                if level >= Y_OFFSET_CONFIG.HIGH_LEVEL_THRESHOLD
-                else Y_OFFSET_CONFIG.DEFAULT_OFFSET)
+    def _get_offsets_for_level(self, level: int) -> tuple:
+        """Get list of y_offsets to try based on current level."""
+        if level >= Y_OFFSET_CONFIG.HIGH_LEVEL_THRESHOLD:
+            return Y_OFFSET_CONFIG.OFFSETS_HIGH_LEVEL  # (0, -65, -85, -105)
+        else:
+            return Y_OFFSET_CONFIG.OFFSETS_LOW_LEVEL  # (0, -40)
 
     def _read_chat_with_retry(self, y_offset: int, clipboard_before: str = None) -> str:
         """
@@ -292,56 +297,49 @@ class MacroRunner:
         return chat_text
 
     def _parse_with_offset_retry(
-        self, chat_text: str, current_level: int, y_offset: int
+        self, chat_text: str, offsets: tuple
     ) -> Tuple[EnhanceResult, GameState, int]:
         """
         Parse chat text with stepped y-offset retry strategy.
 
+        9강 이상: [0, -65, -85, -105] 순서로 시도
+        - 0: 유지/파괴 결과는 메시지가 짧아서 기본값으로 충분
+        - -65, -85, -105: 성공 시 축하 이미지/멘트로 점점 더 위로
+
+        Args:
+            chat_text: Initial chat text to parse (already read with offsets[0])
+            offsets: Tuple of y_offsets to try in order
+
         Returns:
             Tuple of (result, state, failure_count)
         """
+        # 첫 번째 시도: 이미 읽어온 chat_text로 파싱 (offsets[0]에서 읽음)
         result, state = parse_chat(chat_text)
-        parse_failure_count = 0 if result != EnhanceResult.UNKNOWN else 1
 
-        if result == EnhanceResult.UNKNOWN:
-            # Retry phase 1: same y_offset
-            logger.warning(f"파싱 실패 #{parse_failure_count}")
+        if result != EnhanceResult.UNKNOWN:
+            return result, state, 0
+
+        parse_failure_count = 1
+        logger.warning(f"파싱 실패 #{parse_failure_count} (y_offset={offsets[0]})")
+
+        # 나머지 오프셋 순회 (첫 번째는 이미 시도했으므로 건너뜀)
+        for offset in offsets[1:]:
             time.sleep(self.settings.retry_delay)
-            chat_text = check_status(self.coords, self.settings, y_offset=y_offset) or ""
+            logger.debug(f"y_offset={offset}으로 재시도 중...")
+            chat_text = check_status(self.coords, self.settings, y_offset=offset) or ""
             result, state = parse_chat(chat_text)
-            if result == EnhanceResult.UNKNOWN:
-                parse_failure_count += 1
-                logger.warning(f"파싱 실패 #{parse_failure_count}")
 
-        # Step 1: After 2 failures, try different y_offset based on level
-        if result == EnhanceResult.UNKNOWN and parse_failure_count >= 2:
-            # 고레벨: 원래 offset - 20 (예: -65 - 20 = -85) - 이미지/멘트가 길어질 수 있음
-            # 저레벨: 고정값 -40
-            adjusted_offset = (y_offset - 20
-                              if current_level >= Y_OFFSET_CONFIG.HIGH_LEVEL_THRESHOLD
-                              else Y_OFFSET_CONFIG.RETRY_OFFSET_LOW)
-            logger.warning(f"2회 연속 실패 - y좌표 {adjusted_offset}으로 재시도 (레벨 {current_level})")
-            for _ in range(2):
-                time.sleep(self.settings.retry_delay)
-                chat_text = check_status(self.coords, self.settings, y_offset=adjusted_offset) or ""
-                result, state = parse_chat(chat_text)
-                if result != EnhanceResult.UNKNOWN:
-                    break
-                parse_failure_count += 1
-                logger.warning(f"파싱 실패 #{parse_failure_count}")
+            if result != EnhanceResult.UNKNOWN:
+                logger.info(f"파싱 성공 (y_offset={offset})")
+                return result, state, parse_failure_count
 
-        # Step 2: After 4 failures, try original coord + adjustment
-        if result == EnhanceResult.UNKNOWN and parse_failure_count >= 4:
-            adjusted_offset = y_offset + Y_OFFSET_CONFIG.RETRY_OFFSET_ADJUST
-            logger.warning(f"4회 연속 실패 - y좌표 {adjusted_offset}으로 재시도")
-            for _ in range(2):
-                time.sleep(self.settings.retry_delay)
-                chat_text = check_status(self.coords, self.settings, y_offset=adjusted_offset) or ""
-                result, state = parse_chat(chat_text)
-                if result != EnhanceResult.UNKNOWN:
-                    break
-                parse_failure_count += 1
-                logger.warning(f"파싱 실패 #{parse_failure_count}")
+            parse_failure_count += 1
+            logger.warning(f"파싱 실패 #{parse_failure_count} (y_offset={offset})")
+
+            # 최대 5회 실패 시 중단 (프로필 체크로 fallback)
+            if parse_failure_count >= 5:
+                logger.warning("5회 연속 파싱 실패 - 프로필 체크로 전환")
+                break
 
         return result, state, parse_failure_count
 
@@ -429,11 +427,12 @@ class MacroRunner:
                 gold_before = self.game_state.gold
                 current_level = self.game_state.level
 
-                # Determine y_offset based on level
-                y_offset = self._get_y_offset_for_level(current_level)
+                # Get list of y_offsets to try based on level
+                offsets = self._get_offsets_for_level(current_level)
+                initial_offset = offsets[0]  # 첫 번째 오프셋으로 초기 읽기
 
                 # Store clipboard content before action for stale detection
-                clipboard_before_action = check_status(self.coords, self.settings, y_offset=y_offset) or ""
+                clipboard_before_action = check_status(self.coords, self.settings, y_offset=initial_offset) or ""
 
                 if action == Action.ENHANCE:
                     logger.info(f"강화 실행 (현재 {current_level}강)")
@@ -459,19 +458,19 @@ class MacroRunner:
                 time.sleep(self.settings.result_check_delay)
 
                 # Read chat with retry (handles empty/stale clipboard)
-                chat_text = self._read_chat_with_retry(y_offset, clipboard_before_action)
+                chat_text = self._read_chat_with_retry(initial_offset, clipboard_before_action)
                 logger.debug(f"채팅 텍스트 (마지막 200자): ...{chat_text[-200:] if chat_text and len(chat_text) > 200 else (chat_text or '')}")
 
-                # Parse with y-offset retry strategy
+                # Parse with y-offset retry strategy (tries offsets in order)
                 result, state, parse_failure_count = self._parse_with_offset_retry(
-                    chat_text, current_level, y_offset
+                    chat_text, offsets
                 )
                 logger.info(f"파싱 결과: result={result.value}, parsed_level={state.level}, parsed_gold={state.gold}")
 
-                # Stop after 6 consecutive parse failures
-                if result == EnhanceResult.UNKNOWN and parse_failure_count >= 6:
-                    logger.error(f"파싱 6회 연속 실패 - 작업 종료")
-                    break
+                # Stop after 5 consecutive parse failures (프로필 체크로 fallback)
+                if result == EnhanceResult.UNKNOWN and parse_failure_count >= 5:
+                    logger.warning(f"파싱 5회 연속 실패 - 프로필 체크로 전환")
+                    # 프로필 체크는 아래 UNKNOWN 핸들링에서 수행됨
 
                 if result != EnhanceResult.UNKNOWN and parse_failure_count > 0:
                     logger.info(f"재시도 파싱 결과: result={result.value}, parsed_level={state.level}, parsed_gold={state.gold}")
@@ -543,8 +542,12 @@ class MacroRunner:
                     if is_stale:
                         logger.info(f"추가 대기 ({self.settings.stale_result_delay}초) 후 재확인...")
                         time.sleep(self.settings.stale_result_delay)
-                        chat_text = check_status(self.coords, self.settings, y_offset=y_offset) or ""
-                        result, state = parse_chat(chat_text)
+                        # stale 재확인 시 오프셋 리스트 순회
+                        for offset in offsets:
+                            chat_text = check_status(self.coords, self.settings, y_offset=offset) or ""
+                            result, state = parse_chat(chat_text)
+                            if result != EnhanceResult.UNKNOWN:
+                                break
                         logger.info(f"재확인 결과: result={result.value}, parsed_level={state.level}, parsed_gold={state.gold}")
 
                         # Still stale? Wait more and retry once more
@@ -557,8 +560,11 @@ class MacroRunner:
                         if still_stale:
                             logger.warning(f"여전히 오래된 결과 - 추가 대기 ({self.settings.stale_result_delay * 2}초) 후 마지막 시도")
                             time.sleep(self.settings.stale_result_delay * 2)
-                            chat_text = check_status(self.coords, self.settings, y_offset=y_offset) or ""
-                            result, state = parse_chat(chat_text)
+                            for offset in offsets:
+                                chat_text = check_status(self.coords, self.settings, y_offset=offset) or ""
+                                result, state = parse_chat(chat_text)
+                                if result != EnhanceResult.UNKNOWN:
+                                    break
                             logger.info(f"최종 결과: result={result.value}, parsed_level={state.level}, parsed_gold={state.gold}")
 
                 # Update state based on action

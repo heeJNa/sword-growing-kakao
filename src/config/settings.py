@@ -17,7 +17,7 @@ class Settings:
 
     # Macro timing settings (in seconds)
     profile_check_delay: float = 1.2  # 프로필 확인 대기
-    result_check_delay: float = 1.2  # 결과 확인 대기
+    result_check_delay: float = 1.5  # 결과 확인 대기 (강화 결과가 늦게 나올 수 있음)
     retry_delay: float = 0.2  # 재시도 대기
     stale_result_delay: float = 0.7  # 오래된 결과 재확인 대기
 
