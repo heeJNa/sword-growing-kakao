@@ -266,8 +266,13 @@ class MacroRunner:
                 gold_before = self.game_state.gold
                 current_level = self.game_state.level
 
+                # Determine y_offset before action (same offset will be used for comparison)
+                # Use -60 for level 9+ (extra messages/images)
+                y_offset = -60 if current_level >= 9 else 0
+
                 # Store clipboard content before action for comparison later
-                clipboard_before_action = check_status(self.coords, self.settings, y_offset=0)
+                # IMPORTANT: Use same y_offset as will be used after action
+                clipboard_before_action = check_status(self.coords, self.settings, y_offset=y_offset)
 
                 if action == Action.ENHANCE:
                     logger.info(f"강화 실행 (현재 {current_level}강)")
@@ -288,8 +293,7 @@ class MacroRunner:
                     time.sleep(self.settings.action_delay)
                     continue
 
-                # Determine y_offset: use -60 for level 9+ (extra messages/images)
-                y_offset = -60 if current_level >= 9 else 0
+                # y_offset is already determined above (before clipboard_before_action)
 
                 # Read result (wait for response)
                 logger.debug(f"결과 읽기 대기 ({self.settings.result_check_delay}초)")
