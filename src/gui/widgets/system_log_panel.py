@@ -2,6 +2,7 @@
 import tkinter as tk
 from tkinter import ttk, filedialog
 import logging
+import queue
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
@@ -10,12 +11,19 @@ from ...utils.logger import LOG_DIR, get_log_file
 
 
 class TextHandler(logging.Handler):
-    """Logging handler that writes to a Tkinter Text widget (thread-safe)"""
+    """
+    Logging handler that writes to a Tkinter Text widget.
+
+    THREAD-SAFE: Uses a queue to pass log records from any thread to the main thread.
+    The main thread must call process_queue() periodically to display logs.
+    NEVER calls tkinter methods directly from background threads.
+    """
 
     def __init__(self, text_widget: tk.Text):
         super().__init__()
         self.text_widget = text_widget
         self._shutdown = False  # Flag to prevent access during shutdown
+        self._log_queue = queue.Queue()  # Thread-safe queue for log records
 
         # Formatter
         self.setFormatter(logging.Formatter(
@@ -28,60 +36,80 @@ class TextHandler(logging.Handler):
         self._shutdown = True
 
     def emit(self, record):
-        # Don't process if shutdown
+        """
+        Called from any thread to emit a log record.
+        Just puts the record in a queue - does NOT call any tkinter methods.
+        """
         if self._shutdown:
             return
 
         try:
             msg = self.format(record)
-
-            def append():
-                # Double-check shutdown flag and widget validity
-                if self._shutdown:
-                    return
-                try:
-                    # Check if widget still exists
-                    if not self.text_widget.winfo_exists():
-                        return
-
-                    self.text_widget.configure(state="normal")
-                    self.text_widget.insert(tk.END, msg + "\n")
-
-                    # Auto-scroll to bottom
-                    self.text_widget.see(tk.END)
-
-                    # Apply tag based on level
-                    line_start = self.text_widget.index(f"end-2l linestart")
-                    line_end = self.text_widget.index(f"end-1l lineend")
-
-                    if record.levelno >= logging.ERROR:
-                        self.text_widget.tag_add("error", line_start, line_end)
-                    elif record.levelno >= logging.WARNING:
-                        self.text_widget.tag_add("warning", line_start, line_end)
-                    elif record.levelno >= logging.INFO:
-                        self.text_widget.tag_add("info", line_start, line_end)
-                    else:
-                        self.text_widget.tag_add("debug", line_start, line_end)
-
-                    # Limit to 1000 lines
-                    line_count = int(self.text_widget.index("end-1c").split(".")[0])
-                    if line_count > 1000:
-                        self.text_widget.delete("1.0", f"{line_count - 1000}.0")
-
-                    self.text_widget.configure(state="disabled")
-                except tk.TclError:
-                    # Widget destroyed, ignore
-                    pass
-
-            # Schedule in main thread (only if not shutdown)
-            if not self._shutdown:
-                try:
-                    self.text_widget.after(0, append)
-                except tk.TclError:
-                    # Widget destroyed, ignore
-                    pass
+            # Only put in queue - NO tkinter calls here!
+            self._log_queue.put_nowait((msg, record.levelno))
+        except queue.Full:
+            pass
         except Exception:
-            # Ignore any errors during emit
+            pass
+
+    def process_queue(self):
+        """
+        Process pending log records. MUST be called from main thread only.
+        Call this periodically from the main GUI loop.
+        """
+        if self._shutdown:
+            return
+
+        try:
+            # Process all pending log messages (batch processing for efficiency)
+            messages_processed = 0
+            max_batch = 50  # Limit batch size to keep UI responsive
+
+            while messages_processed < max_batch:
+                try:
+                    msg, levelno = self._log_queue.get_nowait()
+                    self._append_log(msg, levelno)
+                    messages_processed += 1
+                except queue.Empty:
+                    break
+        except tk.TclError:
+            pass
+
+    def _append_log(self, msg: str, levelno: int):
+        """Append a log message to the text widget. MAIN THREAD ONLY."""
+        if self._shutdown:
+            return
+
+        try:
+            if not self.text_widget.winfo_exists():
+                return
+
+            self.text_widget.configure(state="normal")
+            self.text_widget.insert(tk.END, msg + "\n")
+
+            # Auto-scroll to bottom
+            self.text_widget.see(tk.END)
+
+            # Apply tag based on level
+            line_start = self.text_widget.index("end-2l linestart")
+            line_end = self.text_widget.index("end-1l lineend")
+
+            if levelno >= logging.ERROR:
+                self.text_widget.tag_add("error", line_start, line_end)
+            elif levelno >= logging.WARNING:
+                self.text_widget.tag_add("warning", line_start, line_end)
+            elif levelno >= logging.INFO:
+                self.text_widget.tag_add("info", line_start, line_end)
+            else:
+                self.text_widget.tag_add("debug", line_start, line_end)
+
+            # Limit to 1000 lines
+            line_count = int(self.text_widget.index("end-1c").split(".")[0])
+            if line_count > 1000:
+                self.text_widget.delete("1.0", f"{line_count - 1000}.0")
+
+            self.text_widget.configure(state="disabled")
+        except tk.TclError:
             pass
 
 
@@ -108,7 +136,7 @@ class SystemLogPanel(ttk.Frame):
             control_frame,
             text="▶ 시작",
             command=self._handle_start,
-            width=10
+            width=8
         )
         self.start_btn.pack(side="left", padx=2)
 
@@ -116,7 +144,7 @@ class SystemLogPanel(ttk.Frame):
             control_frame,
             text="⏸ 일시정지",
             command=self._handle_pause,
-            width=10,
+            width=12,
             state="disabled"
         )
         self.pause_btn.pack(side="left", padx=2)
@@ -125,7 +153,7 @@ class SystemLogPanel(ttk.Frame):
             control_frame,
             text="■ 정지",
             command=self._handle_stop,
-            width=10,
+            width=8,
             state="disabled"
         )
         self.stop_btn.pack(side="left", padx=2)
@@ -212,6 +240,9 @@ class SystemLogPanel(ttk.Frame):
         self._handler: Optional[TextHandler] = None
         self._setup_logging()
 
+        # Start log queue processing loop (runs on main thread)
+        self._start_log_processing()
+
         # Status bar
         status_frame = ttk.Frame(self)
         status_frame.pack(fill="x", pady=(5, 0))
@@ -239,6 +270,22 @@ class SystemLogPanel(ttk.Frame):
             logger.setLevel(logging.DEBUG)
             if self._handler not in logger.handlers:
                 logger.addHandler(self._handler)
+
+    def _start_log_processing(self) -> None:
+        """Start periodic log queue processing (MAIN THREAD ONLY)"""
+        self._process_log_queue()
+
+    def _process_log_queue(self) -> None:
+        """Process log queue and reschedule. MAIN THREAD ONLY."""
+        if self._handler:
+            self._handler.process_queue()
+
+        # Reschedule every 100ms (runs on main thread, safe)
+        try:
+            if self.winfo_exists():
+                self.after(100, self._process_log_queue)
+        except tk.TclError:
+            pass
 
     def _on_level_change(self, event=None) -> None:
         """Handle log level filter change"""
@@ -316,23 +363,37 @@ class SystemLogPanel(ttk.Frame):
         """Update button states for running mode"""
         self._is_running = running
 
-        if running:
-            self.start_btn.config(state="disabled")
-            self.pause_btn.config(state="normal", text="⏸ 일시정지")
-            self.stop_btn.config(state="normal")
-        else:
-            self.start_btn.config(state="normal")
-            self.pause_btn.config(state="disabled")
-            self.stop_btn.config(state="disabled")
+        # Check if widgets still exist before configuring
+        try:
+            if not self.winfo_exists():
+                return
+            if running:
+                self.start_btn.config(state="disabled")
+                self.pause_btn.config(state="normal", text="⏸ 일시정지")
+                self.stop_btn.config(state="normal")
+            else:
+                self.start_btn.config(state="normal")
+                self.pause_btn.config(state="disabled")
+                self.stop_btn.config(state="disabled")
+        except tk.TclError:
+            # Widget destroyed, ignore
+            pass
 
     def set_paused(self, paused: bool) -> None:
         """Update button states for paused mode"""
         self._is_paused = paused
 
-        if paused:
-            self.pause_btn.config(text="▶ 재개")
-        else:
-            self.pause_btn.config(text="⏸ 일시정지")
+        # Check if widgets still exist before configuring
+        try:
+            if not self.winfo_exists():
+                return
+            if paused:
+                self.pause_btn.config(text="▶ 재개")
+            else:
+                self.pause_btn.config(text="⏸ 일시정지")
+        except tk.TclError:
+            # Widget destroyed, ignore
+            pass
 
     def destroy(self) -> None:
         """Clean up when widget is destroyed"""

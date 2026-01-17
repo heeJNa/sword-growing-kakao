@@ -71,10 +71,6 @@ def check_mac_accessibility():
 def main():
     """Main entry point for GUI application"""
     try:
-        # Check macOS accessibility on first run
-        if sys.platform == "darwin":
-            check_mac_accessibility()
-
         app = MacroApp()
         app.run()
     except Exception as e:

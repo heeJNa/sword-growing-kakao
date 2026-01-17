@@ -55,6 +55,9 @@ class StatsCollector:
         self.session.end_time = datetime.now()
         self.save_session(self.session)
 
+        # Save cumulative level stats for persistence across restarts
+        self.save_cumulative_level_stats()
+
         result = self.session
         self.session = None
         return result
@@ -231,3 +234,55 @@ class StatsCollector:
                     cumulative["level_stats"][level]["total"] += stats.total_attempts
 
         return cumulative
+
+    def save_cumulative_level_stats(self) -> None:
+        """
+        Save cumulative level stats to persistent storage.
+        This is called automatically when session ends.
+        """
+        cumulative = self.get_cumulative_stats()
+        cumulative_path = self.stats_dir / "cumulative_level_stats.json"
+
+        with open(cumulative_path, "w", encoding="utf-8") as f:
+            json.dump(cumulative["level_stats"], f, indent=2, ensure_ascii=False)
+
+    def load_cumulative_level_stats(self) -> dict:
+        """
+        Load cumulative level stats from persistent storage.
+
+        Returns:
+            Dictionary of level -> {success, maintain, destroy, total}
+        """
+        cumulative_path = self.stats_dir / "cumulative_level_stats.json"
+
+        if not cumulative_path.exists():
+            return {}
+
+        try:
+            with open(cumulative_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                # Convert string keys to int
+                return {int(k): v for k, v in data.items()}
+        except (json.JSONDecodeError, ValueError):
+            return {}
+
+    def get_cumulative_level_stats_as_model(self) -> dict:
+        """
+        Get cumulative level stats as LevelStats model objects.
+        This is useful for chart rendering.
+
+        Returns:
+            Dictionary of level -> LevelStats
+        """
+        raw_stats = self.load_cumulative_level_stats()
+        result = {}
+
+        for level, stats in raw_stats.items():
+            level_stats = LevelStats(level=level)
+            level_stats.success_count = stats.get("success", 0)
+            level_stats.maintain_count = stats.get("maintain", 0)
+            level_stats.destroy_count = stats.get("destroy", 0)
+            level_stats.total_attempts = stats.get("total", 0)
+            result[level] = level_stats
+
+        return result

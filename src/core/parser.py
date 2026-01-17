@@ -317,3 +317,61 @@ def extract_sell_info(text: str) -> Tuple[Optional[int], Optional[int]]:
     gold_earned, remaining_gold, _ = parse_sell_message(text)
     level, _ = extract_sword_info(text, "sell")
     return level, gold_earned
+
+
+# ============================================================
+# 프로필 파싱
+# ============================================================
+
+@dataclass
+class ProfileInfo:
+    """Parsed profile information"""
+    name: Optional[str] = None
+    gold: Optional[int] = None
+    level: Optional[int] = None
+    sword_name: Optional[str] = None
+
+
+def parse_profile(text: str) -> Optional[ProfileInfo]:
+    """
+    Parse profile message to extract current state.
+
+    Expected format:
+    ⚔️ [프로필]
+    ● 이름: @김희준
+    ● 보유 골드: 4,354,050,506 G
+    ● 보유 검: [+9] 생명의 근원 검
+
+    Returns:
+        ProfileInfo or None if not a profile message
+    """
+    # Check if this is a profile message
+    if "[프로필]" not in text and "프로필" not in text:
+        return None
+
+    logger.debug("프로필 메시지 파싱 시작")
+
+    profile = ProfileInfo()
+
+    # Extract name: ● 이름: @김희준
+    name_match = re.search(r'이름\s*:\s*@?(\S+)', text)
+    if name_match:
+        profile.name = name_match.group(1)
+        logger.debug(f"이름: {profile.name}")
+
+    # Extract gold: ● 보유 골드: 4,354,050,506 G
+    gold_match = re.search(r'보유\s*골드\s*:\s*([0-9,]+)\s*G', text)
+    if gold_match:
+        profile.gold = parse_gold(gold_match.group(1))
+        logger.debug(f"보유 골드: {profile.gold:,}")
+
+    # Extract sword: ● 보유 검: [+9] 생명의 근원 검
+    sword_match = re.search(r'보유\s*검\s*:\s*\[\+(\d+)\]\s*(.+?)(?:\n|$)', text)
+    if sword_match:
+        profile.level = int(sword_match.group(1))
+        profile.sword_name = sword_match.group(2).strip()
+        logger.debug(f"보유 검: +{profile.level} {profile.sword_name}")
+
+    logger.info(f"프로필 파싱 완료: level={profile.level}, gold={profile.gold:,} G" if profile.gold else f"프로필 파싱 완료: level={profile.level}")
+
+    return profile

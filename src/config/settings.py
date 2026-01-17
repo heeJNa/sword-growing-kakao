@@ -10,10 +10,16 @@ class Settings:
     """Application settings"""
 
     # Timing settings (in seconds)
-    action_delay: float = 1.0
-    click_delay: float = 0.1
-    type_delay: float = 0.05
-    response_timeout: float = 5.0
+    action_delay: float = 0.7  # 행동 간 딜레이
+    click_delay: float = 0.1  # 클릭 딜레이
+    type_delay: float = 0.05  # 타이핑 딜레이
+    response_timeout: float = 5.0  # 응답 타임아웃
+
+    # Macro timing settings (in seconds)
+    profile_check_delay: float = 1.2  # 프로필 확인 대기
+    result_check_delay: float = 1.2  # 결과 확인 대기
+    retry_delay: float = 0.2  # 재시도 대기
+    stale_result_delay: float = 0.7  # 오래된 결과 재확인 대기
 
     # Strategy settings
     target_level: int = 15  # Target enhancement level to reach
@@ -36,6 +42,10 @@ class Settings:
             "click_delay": self.click_delay,
             "type_delay": self.type_delay,
             "response_timeout": self.response_timeout,
+            "profile_check_delay": self.profile_check_delay,
+            "result_check_delay": self.result_check_delay,
+            "retry_delay": self.retry_delay,
+            "stale_result_delay": self.stale_result_delay,
             "target_level": self.target_level,
             "sell_on_target": self.sell_on_target,
             "pause_on_target": self.pause_on_target,
@@ -48,10 +58,14 @@ class Settings:
     def from_dict(cls, data: Dict[str, Any]) -> "Settings":
         """Create settings from dictionary"""
         return cls(
-            action_delay=data.get("action_delay", 1.0),
+            action_delay=data.get("action_delay", 0.7),
             click_delay=data.get("click_delay", 0.1),
             type_delay=data.get("type_delay", 0.05),
             response_timeout=data.get("response_timeout", 5.0),
+            profile_check_delay=data.get("profile_check_delay", 1.2),
+            result_check_delay=data.get("result_check_delay", 1.2),
+            retry_delay=data.get("retry_delay", 0.2),
+            stale_result_delay=data.get("stale_result_delay", 0.7),
             target_level=data.get("target_level", 15),
             sell_on_target=data.get("sell_on_target", False),
             pause_on_target=data.get("pause_on_target", True),

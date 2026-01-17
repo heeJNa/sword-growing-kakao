@@ -13,7 +13,7 @@ def enhance(coords: Coordinates = None, settings: Settings = None) -> None:
     """
     Execute enhancement command.
 
-    Sends "/ㄱ" to the chat to trigger enhancement.
+    Sends "/강화" to the chat to trigger enhancement.
 
     Args:
         coords: Screen coordinates (uses default if None)
@@ -27,8 +27,8 @@ def enhance(coords: Coordinates = None, settings: Settings = None) -> None:
         settings = DEFAULT_SETTINGS
 
     # Type enhancement command
-    logger.info("강화 명령 전송: /ㄱ")
-    type_to_chat("/ㄱ", coords)
+    logger.info("강화 명령 전송: /강화")
+    type_to_chat("/강화", coords)
 
     # Wait for response
     logger.debug(f"응답 대기: {settings.action_delay}초")
@@ -40,7 +40,7 @@ def sell(coords: Coordinates = None, settings: Settings = None) -> None:
     """
     Execute sell command.
 
-    Sends "/판" to the chat to sell the current sword.
+    Sends "/판매" to the chat to sell the current sword.
 
     Args:
         coords: Screen coordinates (uses default if None)
@@ -53,8 +53,8 @@ def sell(coords: Coordinates = None, settings: Settings = None) -> None:
         settings = DEFAULT_SETTINGS
 
     # Type sell command
-    logger.info("판매 명령 전송: /판")
-    type_to_chat("/판", coords)
+    logger.info("판매 명령 전송: /판매")
+    type_to_chat("/판매", coords)
 
     # Wait for response
     logger.debug(f"응답 대기: {settings.action_delay}초")
@@ -100,13 +100,14 @@ def use_protection(coords: Coordinates = None, settings: Settings = None) -> Non
     time.sleep(settings.action_delay)
 
 
-def check_status(coords: Coordinates = None, settings: Settings = None) -> str:
+def check_status(coords: Coordinates = None, settings: Settings = None, y_offset: int = 0) -> str:
     """
     Check current status by reading chat.
 
     Args:
         coords: Screen coordinates (uses default if None)
         settings: Settings configuration (uses default if None)
+        y_offset: Y coordinate offset (negative to move up, for avoiding images)
 
     Returns:
         Chat text content
@@ -117,9 +118,10 @@ def check_status(coords: Coordinates = None, settings: Settings = None) -> str:
     if settings is None:
         settings = DEFAULT_SETTINGS
 
-    # Read chat output
-    logger.debug(f"채팅 출력 복사: ({coords.chat_output_x}, {coords.chat_output_y})")
-    result = copy_chat_output(coords)
+    # Read chat output with optional y_offset
+    actual_y = coords.chat_output_y + y_offset
+    logger.debug(f"채팅 출력 복사: ({coords.chat_output_x}, {actual_y}) [offset={y_offset}]")
+    result = copy_chat_output(coords, y_offset=y_offset)
     logger.debug(f"복사된 텍스트 길이: {len(result)}자")
     return result
 

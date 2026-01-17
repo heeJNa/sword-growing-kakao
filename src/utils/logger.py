@@ -37,6 +37,8 @@ def get_logger(name: str) -> logging.Logger:
     # Only configure if not already configured
     if not logger.handlers:
         logger.setLevel(logging.DEBUG)
+        # Prevent propagation to parent loggers (avoid duplicate logs)
+        logger.propagate = False
 
         # File handler - DEBUG level (모든 로그)
         log_file = get_log_file()

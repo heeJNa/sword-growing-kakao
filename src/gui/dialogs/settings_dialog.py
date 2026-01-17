@@ -16,7 +16,7 @@ class SettingsDialog:
         # Create dialog window
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("설정")
-        self.dialog.geometry("450x400")
+        self.dialog.geometry("480x550")
         self.dialog.resizable(False, False)
         self.dialog.transient(parent)
         self.dialog.grab_set()
@@ -102,37 +102,86 @@ class SettingsDialog:
 
     def _create_timing_tab(self, parent) -> None:
         """Create timing settings tab"""
+        row = 0
+
+        # === 기본 딜레이 섹션 ===
+        ttk.Label(parent, text="기본 딜레이", font=("", 9, "bold")).grid(
+            row=row, column=0, columnspan=2, sticky="w", pady=(0, 5))
+        row += 1
+
         # Action delay
-        ttk.Label(parent, text="행동 간 딜레이 (초):").grid(row=0, column=0, sticky="w", pady=5)
+        ttk.Label(parent, text="행동 간 딜레이 (초):").grid(row=row, column=0, sticky="w", pady=3)
         self.action_delay = ttk.Entry(parent, width=10)
         self.action_delay.insert(0, str(self.settings.action_delay))
-        self.action_delay.grid(row=0, column=1, sticky="e", pady=5)
+        self.action_delay.grid(row=row, column=1, sticky="e", pady=3)
+        row += 1
 
         # Click delay
-        ttk.Label(parent, text="클릭 딜레이 (초):").grid(row=1, column=0, sticky="w", pady=5)
+        ttk.Label(parent, text="클릭 딜레이 (초):").grid(row=row, column=0, sticky="w", pady=3)
         self.click_delay = ttk.Entry(parent, width=10)
         self.click_delay.insert(0, str(self.settings.click_delay))
-        self.click_delay.grid(row=1, column=1, sticky="e", pady=5)
+        self.click_delay.grid(row=row, column=1, sticky="e", pady=3)
+        row += 1
 
         # Type delay
-        ttk.Label(parent, text="타이핑 딜레이 (초):").grid(row=2, column=0, sticky="w", pady=5)
+        ttk.Label(parent, text="타이핑 딜레이 (초):").grid(row=row, column=0, sticky="w", pady=3)
         self.type_delay = ttk.Entry(parent, width=10)
         self.type_delay.insert(0, str(self.settings.type_delay))
-        self.type_delay.grid(row=2, column=1, sticky="e", pady=5)
+        self.type_delay.grid(row=row, column=1, sticky="e", pady=3)
+        row += 1
 
         # Response timeout
-        ttk.Label(parent, text="응답 타임아웃 (초):").grid(row=3, column=0, sticky="w", pady=5)
+        ttk.Label(parent, text="응답 타임아웃 (초):").grid(row=row, column=0, sticky="w", pady=3)
         self.response_timeout = ttk.Entry(parent, width=10)
         self.response_timeout.insert(0, str(self.settings.response_timeout))
-        self.response_timeout.grid(row=3, column=1, sticky="e", pady=5)
+        self.response_timeout.grid(row=row, column=1, sticky="e", pady=3)
+        row += 1
+
+        # Separator
+        ttk.Separator(parent, orient="horizontal").grid(row=row, column=0, columnspan=2, sticky="ew", pady=8)
+        row += 1
+
+        # === 매크로 딜레이 섹션 ===
+        ttk.Label(parent, text="매크로 딜레이", font=("", 9, "bold")).grid(
+            row=row, column=0, columnspan=2, sticky="w", pady=(0, 5))
+        row += 1
+
+        # Profile check delay
+        ttk.Label(parent, text="프로필 확인 대기 (초):").grid(row=row, column=0, sticky="w", pady=3)
+        self.profile_check_delay = ttk.Entry(parent, width=10)
+        self.profile_check_delay.insert(0, str(self.settings.profile_check_delay))
+        self.profile_check_delay.grid(row=row, column=1, sticky="e", pady=3)
+        row += 1
+
+        # Result check delay
+        ttk.Label(parent, text="결과 확인 대기 (초):").grid(row=row, column=0, sticky="w", pady=3)
+        self.result_check_delay = ttk.Entry(parent, width=10)
+        self.result_check_delay.insert(0, str(self.settings.result_check_delay))
+        self.result_check_delay.grid(row=row, column=1, sticky="e", pady=3)
+        row += 1
+
+        # Retry delay
+        ttk.Label(parent, text="재시도 대기 (초):").grid(row=row, column=0, sticky="w", pady=3)
+        self.retry_delay = ttk.Entry(parent, width=10)
+        self.retry_delay.insert(0, str(self.settings.retry_delay))
+        self.retry_delay.grid(row=row, column=1, sticky="e", pady=3)
+        row += 1
+
+        # Stale result delay
+        ttk.Label(parent, text="오래된 결과 재확인 (초):").grid(row=row, column=0, sticky="w", pady=3)
+        self.stale_result_delay = ttk.Entry(parent, width=10)
+        self.stale_result_delay.insert(0, str(self.settings.stale_result_delay))
+        self.stale_result_delay.grid(row=row, column=1, sticky="e", pady=3)
+        row += 1
 
         # Note
-        ttk.Separator(parent, orient="horizontal").grid(row=4, column=0, columnspan=2, sticky="ew", pady=10)
+        ttk.Separator(parent, orient="horizontal").grid(row=row, column=0, columnspan=2, sticky="ew", pady=8)
+        row += 1
         ttk.Label(
             parent,
             text="⚠️ 딜레이를 너무 낮추면 오작동이 발생할 수 있습니다.",
             foreground="orange"
-        ).grid(row=5, column=0, columnspan=2, sticky="w", pady=5)
+        ).grid(row=row, column=0, columnspan=2, sticky="w", pady=3)
 
         # Configure columns
         parent.columnconfigure(0, weight=1)
@@ -147,10 +196,17 @@ class SettingsDialog:
             self.settings.pause_on_target = self.pause_on_target.get()
             self.settings.sell_on_target = self.sell_on_target.get()
 
+            # Basic timing
             self.settings.action_delay = float(self.action_delay.get())
             self.settings.click_delay = float(self.click_delay.get())
             self.settings.type_delay = float(self.type_delay.get())
             self.settings.response_timeout = float(self.response_timeout.get())
+
+            # Macro timing
+            self.settings.profile_check_delay = float(self.profile_check_delay.get())
+            self.settings.result_check_delay = float(self.result_check_delay.get())
+            self.settings.retry_delay = float(self.retry_delay.get())
+            self.settings.stale_result_delay = float(self.stale_result_delay.get())
 
             # Save to file
             self.settings.save()
@@ -175,6 +231,7 @@ class SettingsDialog:
         self.min_gold.delete(0, tk.END)
         self.min_gold.insert(0, str(defaults.min_gold))
 
+        # Basic timing
         self.action_delay.delete(0, tk.END)
         self.action_delay.insert(0, str(defaults.action_delay))
 
@@ -186,6 +243,19 @@ class SettingsDialog:
 
         self.response_timeout.delete(0, tk.END)
         self.response_timeout.insert(0, str(defaults.response_timeout))
+
+        # Macro timing
+        self.profile_check_delay.delete(0, tk.END)
+        self.profile_check_delay.insert(0, str(defaults.profile_check_delay))
+
+        self.result_check_delay.delete(0, tk.END)
+        self.result_check_delay.insert(0, str(defaults.result_check_delay))
+
+        self.retry_delay.delete(0, tk.END)
+        self.retry_delay.insert(0, str(defaults.retry_delay))
+
+        self.stale_result_delay.delete(0, tk.END)
+        self.stale_result_delay.insert(0, str(defaults.stale_result_delay))
 
         self.pause_on_target.set(defaults.pause_on_target)
         self.sell_on_target.set(defaults.sell_on_target)

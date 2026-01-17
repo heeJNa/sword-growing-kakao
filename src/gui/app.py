@@ -1,17 +1,17 @@
 """Main GUI Application"""
+import sys
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import json
+import queue
 from pathlib import Path
 from typing import Optional
 
 from .widgets.status_panel import StatusPanel
 from .widgets.stats_panel import StatsPanel
-from .widgets.log_panel import LogPanel
-from .widgets.control_panel import ControlPanel
 from .widgets.system_log_panel import SystemLogPanel
 from .charts.bar_chart import LevelProbabilityChart
-from .charts.line_chart import GoldHistoryChart
+from .widgets.info_log_panel import InfoLogPanel
 from .dialogs.settings_dialog import SettingsDialog
 from .dialogs.calibration_dialog import CalibrationDialog
 
@@ -41,6 +41,12 @@ class MacroApp:
 
     def __init__(self):
         logger.info("검키우기 매크로 시작")
+
+        # Shutdown flag to prevent callbacks during shutdown
+        self._shutting_down = False
+
+        # Thread-safe queue for callbacks from background threads
+        self._callback_queue = queue.Queue()
 
         # Check single instance
         if not ensure_single_instance("sword-macro"):
@@ -72,8 +78,16 @@ class MacroApp:
         # Create main window
         self.root = tk.Tk()
         self.root.title("검키우기 매크로 v1.0")
-        self.root.geometry("950x750")
-        self.root.minsize(900, 700)
+
+        # Center window on screen
+        window_width = 1100
+        window_height = 820
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 3  # 1/3 from top for better visibility
+        self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+        self.root.minsize(950, 780)
 
         # Set icon if exists
         try:
@@ -129,25 +143,6 @@ class MacroApp:
             on_stop=self._on_stop,
         )
 
-        # Control panel (always visible at bottom)
-        control_frame = ttk.Frame(self.root)
-        control_frame.pack(fill="x", padx=10, pady=(0, 10))
-
-        self.control_panel = ControlPanel(control_frame)
-        self.control_panel.pack()
-
-        # Setup control callbacks
-        self.control_panel.set_callbacks(
-            on_start=self._on_start,
-            on_pause=self._on_pause,
-            on_stop=self._on_stop,
-            on_settings=self._on_settings,
-            on_export=self._on_export,
-            on_enhance=self._on_manual_enhance,
-            on_sell=self._on_manual_sell,
-            on_calibrate=self._on_calibration,
-        )
-
         # Menu bar
         self._setup_menu()
 
@@ -157,82 +152,91 @@ class MacroApp:
         top_frame = ttk.Frame(parent)
         top_frame.pack(fill="both", expand=True)
 
-        # Left panel - status and stats
-        left_frame = ttk.Frame(top_frame, width=250)
-        left_frame.pack(side="left", fill="y", padx=(0, 10))
+        # Left panel - status, stats and controls
+        left_frame = ttk.Frame(top_frame, width=320)
+        left_frame.pack(side="left", fill="both", padx=(0, 10))
         left_frame.pack_propagate(False)
 
         self.status_panel = StatusPanel(left_frame)
-        self.status_panel.pack(fill="x", pady=(0, 10))
+        self.status_panel.pack(fill="x", pady=(0, 5))
 
         self.stats_panel = StatsPanel(left_frame)
-        self.stats_panel.pack(fill="x", pady=(0, 10))
+        self.stats_panel.pack(fill="x", pady=(0, 5))
 
-        # 대시보드 컨트롤 버튼
-        dashboard_control = ttk.LabelFrame(left_frame, text="매크로 제어", padding=10)
-        dashboard_control.pack(fill="x", pady=(0, 10))
+        # 자동 모드
+        auto_control = ttk.LabelFrame(left_frame, text="자동 모드", padding=5)
+        auto_control.pack(fill="x", pady=(0, 5))
 
-        # 버튼 프레임
-        btn_frame = ttk.Frame(dashboard_control)
-        btn_frame.pack(fill="x")
+        auto_row1 = ttk.Frame(auto_control)
+        auto_row1.pack(fill="x", pady=2)
 
-        self.dash_start_btn = ttk.Button(
-            btn_frame,
-            text="▶ 시작",
-            command=self._on_start,
-            width=10
-        )
+        self.dash_start_btn = ttk.Button(auto_row1, text="▶ 시작", command=self._on_start)
         self.dash_start_btn.pack(side="left", padx=2, expand=True, fill="x")
 
-        self.dash_pause_btn = ttk.Button(
-            btn_frame,
-            text="⏸ 일시정지",
-            command=self._on_pause,
-            width=10,
-            state="disabled"
-        )
+        self.dash_pause_btn = ttk.Button(auto_row1, text="⏸ 일시정지", command=self._on_pause, state="disabled")
         self.dash_pause_btn.pack(side="left", padx=2, expand=True, fill="x")
 
-        self.dash_stop_btn = ttk.Button(
-            btn_frame,
-            text="■ 정지",
-            command=self._on_stop,
-            width=10,
-            state="disabled"
-        )
+        self.dash_stop_btn = ttk.Button(auto_row1, text="■ 정지", command=self._on_stop, state="disabled")
         self.dash_stop_btn.pack(side="left", padx=2, expand=True, fill="x")
+
+        # 수동 모드
+        manual_control = ttk.LabelFrame(left_frame, text="수동 모드", padding=5)
+        manual_control.pack(fill="x", pady=(0, 5))
+
+        manual_row1 = ttk.Frame(manual_control)
+        manual_row1.pack(fill="x", pady=2)
+
+        self.dash_profile_btn = ttk.Button(manual_row1, text="📋 프로필", command=self._on_manual_profile)
+        self.dash_profile_btn.pack(side="left", padx=2, expand=True, fill="x")
+
+        self.dash_enhance_btn = ttk.Button(manual_row1, text="⚔ 강화", command=self._on_manual_enhance)
+        self.dash_enhance_btn.pack(side="left", padx=2, expand=True, fill="x")
+
+        self.dash_sell_btn = ttk.Button(manual_row1, text="💰 판매", command=self._on_manual_sell)
+        self.dash_sell_btn.pack(side="left", padx=2, expand=True, fill="x")
+
+        # 설정
+        settings_control = ttk.LabelFrame(left_frame, text="설정", padding=5)
+        settings_control.pack(fill="x", pady=(0, 5))
+
+        settings_row1 = ttk.Frame(settings_control)
+        settings_row1.pack(fill="x", pady=2)
+
+        ttk.Button(settings_row1, text="⚙ 전략", command=self._on_settings).pack(side="left", padx=2, expand=True, fill="x")
+        ttk.Button(settings_row1, text="🎯 좌표", command=self._on_calibration).pack(side="left", padx=2, expand=True, fill="x")
+        ttk.Button(settings_row1, text="📤 내보내기", command=self._on_export).pack(side="left", padx=2, expand=True, fill="x")
 
         # Right panel - charts
         right_frame = ttk.Frame(top_frame)
         right_frame.pack(side="left", fill="both", expand=True)
 
-        # Bar chart
-        chart_frame1 = ttk.LabelFrame(right_frame, text="레벨별 확률")
-        chart_frame1.pack(fill="both", expand=True, pady=(0, 5))
+        # Bar chart (fixed height)
+        chart_frame1 = ttk.LabelFrame(right_frame, text="레벨별 확률", height=320)
+        chart_frame1.pack(fill="x", pady=(0, 5))
+        chart_frame1.pack_propagate(False)
         self.bar_chart = LevelProbabilityChart(chart_frame1)
 
-        # Line chart
-        chart_frame2 = ttk.LabelFrame(right_frame, text="골드 변화")
-        chart_frame2.pack(fill="both", expand=True, pady=(5, 0))
-        self.line_chart = GoldHistoryChart(chart_frame2)
+        # Info log panel (expand to fill remaining space)
+        log_frame2 = ttk.LabelFrame(right_frame, text="실행 로그")
+        log_frame2.pack(fill="both", expand=True, pady=(5, 0))
+        self.info_log_panel = InfoLogPanel(log_frame2)
+        self.info_log_panel.pack(fill="both", expand=True)
 
-        # Bottom section - enhancement log
-        bottom_frame = ttk.Frame(parent)
-        bottom_frame.pack(fill="x", pady=(10, 0))
-
-        self.log_panel = LogPanel(bottom_frame)
-        self.log_panel.pack(fill="x")
+        # Load cumulative stats and update chart on startup
+        self._load_and_show_cumulative_stats()
 
     def _setup_system_tray(self) -> None:
         """Setup system tray for minimize to tray"""
         self.system_tray = None
         if HAS_SYSTEM_TRAY:
             try:
+                # System tray callbacks run on a background thread,
+                # so we wrap them to execute on the main thread via queue
                 self.system_tray = SystemTray(
-                    on_show=self._show_window,
-                    on_quit=self._on_quit,
-                    on_start=self._on_start,
-                    on_stop=self._on_stop,
+                    on_show=lambda: self._safe_after(self._show_window),
+                    on_quit=lambda: self._safe_after(self._on_quit),
+                    on_start=lambda: self._safe_after(self._on_start),
+                    on_stop=lambda: self._safe_after(self._on_stop),
                 )
                 self.system_tray.start()
                 logger.info("System Tray 초기화 완료")
@@ -265,6 +269,9 @@ class MacroApp:
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="도움말", menu=help_menu)
         help_menu.add_command(label="단축키 안내", command=self._show_hotkeys)
+        if sys.platform == "darwin":
+            help_menu.add_command(label="Mac 권한 안내", command=self._show_mac_permissions)
+        help_menu.add_separator()
         help_menu.add_command(label="정보", command=self._show_about)
 
     def _setup_hotkeys(self) -> None:
@@ -286,84 +293,174 @@ class MacroApp:
         )
 
     def _start_update_loop(self) -> None:
-        """Start periodic GUI update"""
+        """Start periodic GUI update and queue processing"""
+        self._process_queue()
         self._update_gui()
+
+    def _process_queue(self) -> None:
+        """Process callbacks from background threads (runs on main thread)"""
+        if self._shutting_down:
+            return
+
+        try:
+            # Process all pending callbacks
+            while True:
+                try:
+                    callback = self._callback_queue.get_nowait()
+                    if callback and not self._shutting_down:
+                        try:
+                            callback()
+                        except tk.TclError:
+                            pass
+                except queue.Empty:
+                    break
+
+            # Schedule next queue check (every 50ms)
+            if not self._shutting_down:
+                self.root.after(50, self._process_queue)
+        except tk.TclError:
+            pass
+
+    def _load_and_show_cumulative_stats(self) -> None:
+        """Load cumulative stats from previous sessions and show in chart"""
+        try:
+            cumulative_stats = self.stats_collector.get_cumulative_level_stats_as_model()
+            if cumulative_stats:
+                logger.info(f"누적 통계 로드: {len(cumulative_stats)}개 레벨")
+                self.bar_chart.update(cumulative_stats)
+        except Exception as e:
+            logger.warning(f"누적 통계 로드 실패: {e}")
+
+    def _get_combined_level_stats(self) -> dict:
+        """
+        Get combined level stats: cumulative + current session.
+        This merges previous session data with the current session.
+        """
+        from ..stats.models import LevelStats
+
+        # Start with cumulative stats
+        combined = self.stats_collector.get_cumulative_level_stats_as_model()
+
+        # Add current session stats
+        if self.stats_collector.session:
+            current_stats = self.stats_collector.get_all_level_stats()
+            for level, stats in current_stats.items():
+                if level in combined:
+                    # Merge with existing
+                    combined[level].success_count += stats.success_count
+                    combined[level].maintain_count += stats.maintain_count
+                    combined[level].destroy_count += stats.destroy_count
+                    combined[level].total_attempts += stats.total_attempts
+                else:
+                    # Create new entry
+                    combined[level] = LevelStats(level=level)
+                    combined[level].success_count = stats.success_count
+                    combined[level].maintain_count = stats.maintain_count
+                    combined[level].destroy_count = stats.destroy_count
+                    combined[level].total_attempts = stats.total_attempts
+
+        return combined
 
     def _update_gui(self) -> None:
         """Periodic GUI update"""
-        # Update status panel
-        self.status_panel.update_state(self.macro.game_state)
+        # Don't update if shutting down
+        if self._shutting_down:
+            return
 
-        # Update stats panel if session exists
-        if self.stats_collector.session:
-            self.stats_panel.update_stats(self.stats_collector.session)
+        try:
+            # Update status panel
+            self.status_panel.update_state(self.macro.game_state)
 
-            # Update charts (less frequently)
-            level_stats = self.stats_collector.get_all_level_stats()
-            self.bar_chart.update(level_stats)
+            # Update stats panel if session exists
+            if self.stats_collector.session:
+                self.stats_panel.update_stats(self.stats_collector.session)
 
-            history = self.stats_collector.get_recent_history(50)
-            starting = self.stats_collector.session.starting_gold
-            self.line_chart.update(history, starting)
+                # Update chart with combined stats (cumulative + current session)
+                combined_stats = self._get_combined_level_stats()
+                self.bar_chart.update(combined_stats)
 
-        # Schedule next update
-        self.root.after(self.settings.gui_update_interval, self._update_gui)
+            # Schedule next update
+            if not self._shutting_down:
+                self.root.after(self.settings.gui_update_interval, self._update_gui)
+        except tk.TclError:
+            # Widget destroyed, stop updating
+            pass
 
     # === Callbacks ===
 
+    def _safe_after(self, callback) -> None:
+        """Queue a callback to be executed on the main thread (thread-safe)"""
+        if self._shutting_down:
+            return
+        # Put callback in queue - will be processed by _process_queue on main thread
+        try:
+            self._callback_queue.put_nowait(callback)
+        except queue.Full:
+            pass
+
     def _on_state_change(self, state: GameState) -> None:
         """Handle game state change (called from background thread)"""
+        if self._shutting_down:
+            return
         logger.debug(f"상태 변경: level={state.level}, gold={state.gold}")
         # GUI 업데이트는 메인 스레드에서 실행
-        self.root.after(0, lambda: self.status_panel.update_state(state))
+        self._safe_after(lambda: self.status_panel.update_state(state))
 
     def _on_result(self, result: EnhanceResult) -> None:
         """Handle enhancement result (called from background thread)"""
+        if self._shutting_down:
+            return
         logger.info(f"강화 결과: {result.value}")
 
-        # GUI 업데이트는 메인 스레드에서 실행
-        def update_ui():
-            if self.stats_collector.session:
-                history = self.stats_collector.get_recent_history(1)
-                if history:
-                    self.log_panel.add_record(history[0])
-
-        self.root.after(0, update_ui)
+        # Enhancement results are now shown in the info_log_panel via logger.info()
 
     def _on_status_change(self, status: MacroState) -> None:
         """Handle macro status change (called from background thread)"""
+        if self._shutting_down:
+            return
         logger.info(f"매크로 상태: {status.value}")
 
         # GUI 업데이트는 메인 스레드에서 실행
         def update_ui():
-            self.status_panel.update_macro_state(status)
-            self.control_panel.set_running(status == MacroState.RUNNING)
-            self.control_panel.set_paused(status == MacroState.PAUSED)
-            self.system_log_panel.set_running(status == MacroState.RUNNING)
-            self.system_log_panel.set_paused(status == MacroState.PAUSED)
-            self._update_dashboard_buttons(status)
+            if self._shutting_down:
+                return
+            try:
+                self.status_panel.update_macro_state(status)
+                self.system_log_panel.set_running(status == MacroState.RUNNING)
+                self.system_log_panel.set_paused(status == MacroState.PAUSED)
+                self._update_dashboard_buttons(status)
+            except tk.TclError:
+                pass
 
-        self.root.after(0, update_ui)
+        self._safe_after(update_ui)
 
     def _update_dashboard_buttons(self, status: MacroState) -> None:
         """Update dashboard control buttons based on macro state"""
-        if status == MacroState.RUNNING:
-            self.dash_start_btn.config(state="disabled")
-            self.dash_pause_btn.config(state="normal", text="⏸ 일시정지")
-            self.dash_stop_btn.config(state="normal")
-        elif status == MacroState.PAUSED:
-            self.dash_start_btn.config(state="disabled")
-            self.dash_pause_btn.config(state="normal", text="▶ 재개")
-            self.dash_stop_btn.config(state="normal")
-        else:  # STOPPED, IDLE, ERROR
-            self.dash_start_btn.config(state="normal")
-            self.dash_pause_btn.config(state="disabled", text="⏸ 일시정지")
-            self.dash_stop_btn.config(state="disabled")
+        if self._shutting_down:
+            return
+        try:
+            if status == MacroState.RUNNING:
+                self.dash_start_btn.config(state="disabled")
+                self.dash_pause_btn.config(state="normal", text="⏸ 일시정지")
+                self.dash_stop_btn.config(state="normal")
+            elif status == MacroState.PAUSED:
+                self.dash_start_btn.config(state="disabled")
+                self.dash_pause_btn.config(state="normal", text="▶ 재개")
+                self.dash_stop_btn.config(state="normal")
+            else:  # STOPPED, IDLE, ERROR
+                self.dash_start_btn.config(state="normal")
+                self.dash_pause_btn.config(state="disabled", text="⏸ 일시정지")
+                self.dash_stop_btn.config(state="disabled")
+        except tk.TclError:
+            # Widget destroyed, ignore
+            pass
 
     def _on_error(self, error: Exception) -> None:
         """Handle error"""
+        if self._shutting_down:
+            return
         logger.error(f"오류 발생: {error}")
-        self.root.after(0, lambda: messagebox.showerror("오류", str(error)))
+        self._safe_after(lambda: messagebox.showerror("오류", str(error)))
 
     # === Control Actions ===
 
@@ -386,6 +483,41 @@ class MacroApp:
         """Stop auto mode"""
         logger.info("자동 모드 정지")
         self.macro.stop()
+
+    def _on_manual_profile(self) -> None:
+        """Manual profile check"""
+        if not self.macro.is_running():
+            logger.info("수동 프로필 확인")
+            # Run in background thread to avoid blocking GUI
+            import threading
+            def check_profile():
+                from ..automation.clipboard import type_to_chat
+                from ..core.actions import check_status
+                from ..core.parser import parse_profile
+                import time
+
+                try:
+                    type_to_chat("/프로필", self.coords)
+                    time.sleep(1.5)
+                    chat_text = check_status(self.coords, self.macro.settings)
+                    profile = parse_profile(chat_text)
+
+                    if profile:
+                        if profile.level is not None:
+                            self.macro.game_state.level = profile.level
+                        if profile.gold is not None:
+                            self.macro.game_state.gold = profile.gold
+                        if profile.sword_name:
+                            self.macro.game_state.sword_name = profile.sword_name
+
+                        logger.info(f"프로필 확인: +{profile.level}강, {profile.gold:,} G")
+                        self._safe_after(lambda: self.status_panel.update_state(self.macro.game_state))
+                    else:
+                        logger.warning("프로필 파싱 실패")
+                except Exception as e:
+                    logger.error(f"프로필 확인 에러: {e}")
+
+            threading.Thread(target=check_profile, daemon=True).start()
 
     def _on_manual_enhance(self) -> None:
         """Manual enhance"""
@@ -470,10 +602,11 @@ class MacroApp:
         self._on_stop()
 
     def _hotkey_emergency_stop(self) -> None:
-        """ESC: Emergency stop"""
+        """ESC: Emergency stop (called from hotkey listener background thread)"""
         logger.warning("긴급 정지!")
         self.macro.stop()
-        self.root.after(0, lambda: messagebox.showwarning("긴급 정지", "매크로가 긴급 정지되었습니다."))
+        # Use thread-safe queue instead of after() from background thread
+        self._safe_after(lambda: messagebox.showwarning("긴급 정지", "매크로가 긴급 정지되었습니다."))
 
     # === Help Dialogs ===
 
@@ -488,8 +621,33 @@ F3 - 자동 모드 시작
 F4 - 일시정지/재개
 F5 - 정지
 ESC - 긴급 정지
+
+※ macOS에서는 단축키가 지원되지 않습니다.
+   GUI 버튼을 사용해주세요.
 """
         messagebox.showinfo("단축키 안내", help_text)
+
+    def _show_mac_permissions(self) -> None:
+        """Show macOS accessibility permissions help"""
+        help_text = """
+Mac 손쉬운 사용 권한 안내
+
+이 앱은 마우스/키보드 제어를 위해
+손쉬운 사용 권한이 필요합니다.
+
+권한 설정 방법:
+1. 시스템 설정 → 개인정보 보호 및 보안
+2. 손쉬운 사용 선택
+3. 터미널 앱 (Terminal, iTerm, VS Code 등) 토글 ON
+4. 권한 부여 후 앱 재시작 필요
+
+⚠️ 권한이 없으면 마우스 클릭과
+   키보드 입력이 작동하지 않습니다.
+
+※ macOS에서는 F1-F5 단축키가 지원되지 않습니다.
+   GUI 버튼을 사용해주세요.
+"""
+        messagebox.showinfo("Mac 권한 안내", help_text)
 
     def _show_about(self) -> None:
         """Show about dialog"""
@@ -542,6 +700,21 @@ ESC - 긴급 정지
         if self.macro.is_running():
             if not messagebox.askyesno("종료", "매크로가 실행 중입니다. 종료하시겠습니까?"):
                 return
+
+        # CRITICAL: Set shutdown flag FIRST to prevent callbacks from accessing GUI
+        self._shutting_down = True
+        logger.info("프로그램 종료 시작...")
+
+        # Clear macro callbacks to prevent any more GUI updates
+        self.macro.set_callbacks(
+            on_state_change=None,
+            on_result=None,
+            on_status_change=None,
+            on_error=None,
+        )
+
+        # Stop macro if running
+        if self.macro.is_running():
             self.macro.stop()
 
             # Wait for macro thread to actually stop (max 2 seconds)
@@ -566,15 +739,22 @@ ESC - 긴급 정지
         if self.system_tray:
             self.system_tray.stop()
 
-        # Destroy the system log panel first to stop the logging handler
+        # Destroy log panels first to stop logging handlers
         # This prevents background threads from trying to log during shutdown
         try:
             self.system_log_panel.destroy()
         except Exception:
             pass
+        try:
+            self.info_log_panel.destroy()
+        except Exception:
+            pass
 
         # Small delay to let any pending after() callbacks complete
-        self.root.update()
+        try:
+            self.root.update()
+        except tk.TclError:
+            pass
 
         # Close window
         self.root.destroy()

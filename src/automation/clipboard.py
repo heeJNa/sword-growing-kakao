@@ -4,6 +4,7 @@ import time
 import subprocess
 import pyperclip
 from pynput.mouse import Controller as MouseController, Button
+from pynput.keyboard import Controller as KeyboardController, Key
 from ..config.coordinates import Coordinates, DEFAULT_COORDINATES
 from ..utils.logger import get_logger
 
@@ -13,46 +14,152 @@ logger = get_logger(__name__)
 # Platform detection
 _IS_MAC = sys.platform == "darwin"
 
-# pynput mouse controller (works fine on all platforms)
+# pynput controllers (work on all platforms including background threads)
 _mouse = MouseController()
-
-# Only import pynput keyboard on non-Mac platforms
-# macOS has thread safety issues with pynput keyboard in background threads
-if not _IS_MAC:
-    from pynput.keyboard import Controller as KeyboardController, Key
-    _keyboard = KeyboardController()
+_keyboard = KeyboardController()
 
 
-def _mac_keystroke(key: str, modifier: str = None) -> None:
+def _mac_activate_app(app_name: str = "KakaoTalk") -> bool:
     """
-    Send keystroke using AppleScript on macOS.
-    This avoids the thread safety issues with pynput keyboard.
+    Activate (bring to front) an application on macOS.
+    This is CRITICAL - AppleScript keystrokes go to the frontmost app.
+
+    Returns:
+        True if activation succeeded
     """
-    if modifier:
-        script = f'tell application "System Events" to keystroke "{key}" using {modifier} down'
-    else:
-        script = f'tell application "System Events" to keystroke "{key}"'
-    logger.debug(f"AppleScript 실행: keystroke '{key}' modifier={modifier}")
+    script = f'tell application "{app_name}" to activate'
+    logger.debug(f"앱 활성화: {app_name}")
     try:
         result = subprocess.run(['osascript', '-e', script], capture_output=True, timeout=5)
         if result.returncode != 0:
-            logger.warning(f"AppleScript 실패: {result.stderr.decode()}")
+            logger.warning(f"앱 활성화 실패: {result.stderr.decode()}")
+            return False
+        # Wait for activation to complete
+        time.sleep(0.3)
+        return True
     except subprocess.TimeoutExpired:
-        logger.error(f"AppleScript keystroke 타임아웃: {key}")
+        logger.error(f"앱 활성화 타임아웃: {app_name}")
+        return False
     except Exception as e:
-        logger.error(f"AppleScript 에러: {e}")
+        logger.error(f"앱 활성화 에러: {e}")
+        return False
+
+
+def _mac_is_app_running(app_name: str = "KakaoTalk") -> bool:
+    """Check if an application is running on macOS."""
+    script = f'tell application "System Events" to (name of processes) contains "{app_name}"'
+    try:
+        result = subprocess.run(['osascript', '-e', script], capture_output=True, timeout=5)
+        return result.stdout.decode().strip().lower() == "true"
+    except Exception:
+        return False
+
+
+def _mac_select_all_and_copy() -> bool:
+    """
+    Select all and copy text using AppleScript on macOS.
+    All commands in one script for reliable background thread operation.
+    Uses keyboard shortcuts (Cmd+A, Cmd+C) instead of menu clicks for reliability.
+
+    Returns:
+        True if successful
+    """
+    script = '''
+    tell application "KakaoTalk" to activate
+    delay 0.3
+    tell application "System Events"
+        tell process "KakaoTalk"
+            set frontmost to true
+            delay 0.1
+            -- Use keyboard shortcuts instead of menu clicks
+            keystroke "a" using command down
+            delay 0.2
+            keystroke "c" using command down
+            delay 0.1
+        end tell
+    end tell
+    '''
+
+    logger.debug("macOS: Select All (Cmd+A) + Copy (Cmd+C) 실행")
+
+    try:
+        result = subprocess.run(['osascript', '-e', script], capture_output=True, timeout=10)
+        if result.returncode != 0:
+            logger.warning(f"Select All + Copy 실패: {result.stderr.decode()}")
+            return False
+        return True
+    except subprocess.TimeoutExpired:
+        logger.error("Select All + Copy 타임아웃")
+        return False
+    except Exception as e:
+        logger.error(f"Select All + Copy 에러: {e}")
+        return False
+
+
+def _mac_paste_and_send(text: str) -> bool:
+    """
+    Paste text and send (Enter x2) using AppleScript on macOS.
+    Copies text to clipboard first, then pastes and sends.
+
+    Args:
+        text: Text to paste and send
+
+    Returns:
+        True if successful
+    """
+    # Copy to clipboard first
+    pyperclip.copy(text)
+    time.sleep(0.1)
+
+    script = '''
+    tell application "KakaoTalk" to activate
+    delay 0.2
+    tell application "System Events"
+        tell process "KakaoTalk"
+            set frontmost to true
+            delay 0.1
+            click menu item "Paste" of menu "편집" of menu bar 1
+            delay 0.15
+            key code 36
+            delay 0.1
+            key code 36
+        end tell
+    end tell
+    '''
+
+    logger.debug(f"macOS: Paste + Send 실행: '{text}'")
+
+    try:
+        result = subprocess.run(['osascript', '-e', script], capture_output=True, timeout=10)
+        if result.returncode != 0:
+            logger.warning(f"Paste + Send 실패: {result.stderr.decode()}")
+            return False
+        return True
+    except subprocess.TimeoutExpired:
+        logger.error("Paste + Send 타임아웃")
+        return False
+    except Exception as e:
+        logger.error(f"Paste + Send 에러: {e}")
+        return False
 
 
 def _mac_key_code(code: int, modifier: str = None) -> None:
     """
     Send key code using AppleScript on macOS.
+
     Key codes: 36=Return, 51=Delete, 53=Escape
+
+    Args:
+        code: macOS virtual key code
+        modifier: Optional modifier ('command' for Cmd key)
     """
     if modifier:
         script = f'tell application "System Events" to key code {code} using {modifier} down'
     else:
         script = f'tell application "System Events" to key code {code}'
-    logger.debug(f"AppleScript 실행: key code {code} modifier={modifier}")
+
+    logger.debug(f"AppleScript key code: {code} modifier={modifier}")
+
     try:
         result = subprocess.run(['osascript', '-e', script], capture_output=True, timeout=5)
         if result.returncode != 0:
@@ -63,33 +170,18 @@ def _mac_key_code(code: int, modifier: str = None) -> None:
         logger.error(f"AppleScript key code 에러: {e}")
 
 
-def _mac_type_text(text: str) -> None:
+def _mac_type_and_send(text: str) -> None:
     """
-    Type text using clipboard paste on macOS.
-    This is more reliable for Korean text.
+    Type text and send using clipboard paste on macOS.
+    Uses unified AppleScript for reliable operation from background threads.
     """
-    logger.debug(f"_mac_type_text() 시작: '{text}'")
-    # Save current clipboard
-    try:
-        old_clipboard = pyperclip.paste()
-    except Exception:
-        old_clipboard = ""
+    logger.debug(f"_mac_type_and_send() 시작: '{text}'")
 
-    # Copy text to clipboard and paste
-    logger.debug("클립보드에 텍스트 복사")
-    pyperclip.copy(text)
-    time.sleep(0.05)
-    logger.debug("Cmd+V로 붙여넣기")
-    _mac_keystroke('v', 'command')
-    time.sleep(0.05)
+    # Paste text and send using the unified function
+    _mac_paste_and_send(text)
+    time.sleep(0.15)  # Wait for completion
 
-    # Restore clipboard
-    try:
-        time.sleep(0.1)
-        pyperclip.copy(old_clipboard)
-    except Exception:
-        pass
-    logger.debug("_mac_type_text() 완료")
+    logger.debug("_mac_type_and_send() 완료")
 
 
 def copy_to_clipboard(text: str) -> None:
@@ -112,7 +204,7 @@ def paste_from_clipboard() -> str:
     return pyperclip.paste()
 
 
-def copy_chat_output(coords: Coordinates = None) -> str:
+def copy_chat_output(coords: Coordinates = None, y_offset: int = 0) -> str:
     """
     Copy chat output from KakaoTalk window.
 
@@ -121,6 +213,7 @@ def copy_chat_output(coords: Coordinates = None) -> str:
 
     Args:
         coords: Coordinates configuration (uses default if None)
+        y_offset: Y coordinate offset (negative to move up, for avoiding images)
 
     Returns:
         Chat text from clipboard
@@ -129,34 +222,42 @@ def copy_chat_output(coords: Coordinates = None) -> str:
     if coords is None:
         coords = DEFAULT_COORDINATES
 
-    # Click on chat output area
-    logger.debug(f"채팅 출력 영역 클릭: ({coords.chat_output_x}, {coords.chat_output_y})")
-    _mouse.position = (coords.chat_output_x, coords.chat_output_y)
-    time.sleep(0.05)
-    _mouse.click(Button.left)
-    time.sleep(0.1)
+    # Modifier key: Cmd on Mac, Ctrl on Windows/Linux
+    modifier_key = Key.cmd if _IS_MAC else Key.ctrl
 
     if _IS_MAC:
-        # Use AppleScript for keyboard on macOS
-        logger.debug("macOS: Cmd+A 실행")
-        _mac_keystroke('a', 'command')  # Cmd+A
-        time.sleep(0.1)
-        logger.debug("macOS: Cmd+C 실행")
-        _mac_keystroke('c', 'command')  # Cmd+C
-        time.sleep(0.1)
-    else:
-        # Use pynput on Windows/Linux
-        with _keyboard.pressed(Key.ctrl):
-            _keyboard.press('a')
-            _keyboard.release('a')
-        time.sleep(0.1)
-        with _keyboard.pressed(Key.ctrl):
-            _keyboard.press('c')
-            _keyboard.release('c')
-        time.sleep(0.1)
+        # Pre-flight check: Is KakaoTalk running?
+        if not _mac_is_app_running("KakaoTalk"):
+            logger.error("KakaoTalk이 실행되지 않음!")
+            return ""
+
+        # Activate KakaoTalk
+        _mac_activate_app("KakaoTalk")
+
+    # Click on chat output area (with y_offset)
+    click_x = coords.chat_output_x
+    click_y = coords.chat_output_y + y_offset
+    logger.debug(f"채팅 출력 영역 클릭: ({click_x}, {click_y}) [y_offset={y_offset}]")
+    _mouse.position = (click_x, click_y)
+    time.sleep(0.1)
+    _mouse.click(Button.left)
+    time.sleep(0.2)
+
+    # Select All (Cmd+A or Ctrl+A)
+    logger.debug(f"전체 선택: {modifier_key}+A")
+    with _keyboard.pressed(modifier_key):
+        _keyboard.press('a')
+        _keyboard.release('a')
+    time.sleep(0.15)
+
+    # Copy (Cmd+C or Ctrl+C)
+    logger.debug(f"복사: {modifier_key}+C")
+    with _keyboard.pressed(modifier_key):
+        _keyboard.press('c')
+        _keyboard.release('c')
+    time.sleep(0.2)
 
     # Get clipboard contents
-    logger.debug("클립보드 내용 가져오기")
     result = pyperclip.paste()
     logger.debug(f"copy_chat_output() 완료: {len(result)}자")
     return result
@@ -166,6 +267,8 @@ def type_to_chat(text: str, coords: Coordinates = None) -> None:
     """
     Type text into chat input.
 
+    Uses clipboard paste for Korean text support on all platforms.
+
     Args:
         text: Text to type (supports Korean)
         coords: Coordinates configuration (uses default if None)
@@ -174,29 +277,75 @@ def type_to_chat(text: str, coords: Coordinates = None) -> None:
     if coords is None:
         coords = DEFAULT_COORDINATES
 
+    # Modifier key: Cmd on Mac, Ctrl on Windows/Linux
+    modifier_key = Key.cmd if _IS_MAC else Key.ctrl
+
+    if _IS_MAC:
+        # Pre-flight check: Is KakaoTalk running?
+        if not _mac_is_app_running("KakaoTalk"):
+            logger.error("KakaoTalk이 실행되지 않음!")
+            return
+
+        # Activate KakaoTalk
+        _mac_activate_app("KakaoTalk")
+
     # Click on chat input area
     logger.debug(f"채팅 입력 영역 클릭: ({coords.chat_input_x}, {coords.chat_input_y})")
     _mouse.position = (coords.chat_input_x, coords.chat_input_y)
-    time.sleep(0.05)
+    time.sleep(0.1)
     _mouse.click(Button.left)
+    time.sleep(0.2)
+
+    # Split text: type "/" directly, paste Korean part separately
+    if text.startswith("/"):
+        # Type "/" directly with prefix delay
+        logger.debug("'/' 직접 입력 (슬래시 딜레이 0.3초)")
+        _keyboard.type("/")
+        time.sleep(0.3)  # Slash delay - prevents command not being recognized
+
+        # Paste Korean part via clipboard
+        korean_part = text[1:]
+        if korean_part:
+            logger.debug(f"클립보드에 복사: '{korean_part}'")
+            pyperclip.copy(korean_part)
+            time.sleep(0.2)  # Wait for clipboard to update
+
+            # Verify clipboard content
+            clipboard_content = pyperclip.paste()
+            if clipboard_content != korean_part:
+                logger.warning(f"클립보드 불일치! 예상: '{korean_part}', 실제: '{clipboard_content}'")
+                # Retry copy
+                pyperclip.copy(korean_part)
+                time.sleep(0.2)
+
+            # Paste (Cmd+V or Ctrl+V)
+            logger.debug(f"붙여넣기: {modifier_key}+V")
+            with _keyboard.pressed(modifier_key):
+                _keyboard.press('v')
+                _keyboard.release('v')
+            time.sleep(0.3)  # Wait after paste before Enter
+    else:
+        # No slash prefix - paste entire text
+        logger.debug(f"클립보드에 복사: '{text}'")
+        pyperclip.copy(text)
+        time.sleep(0.1)
+
+        # Paste (Cmd+V or Ctrl+V)
+        logger.debug(f"붙여넣기: {modifier_key}+V")
+        with _keyboard.pressed(modifier_key):
+            _keyboard.press('v')
+            _keyboard.release('v')
+        time.sleep(0.3)  # Wait after paste before Enter
+
+    # Press Enter twice - required for KakaoTalk
+    logger.debug("Enter 키 전송 (2회) - 붙여넣기 후 딜레이 적용됨")
+    _keyboard.press(Key.enter)
+    _keyboard.release(Key.enter)
+    time.sleep(0.1)
+    _keyboard.press(Key.enter)
+    _keyboard.release(Key.enter)
     time.sleep(0.1)
 
-    if _IS_MAC:
-        # Use clipboard paste for Korean text on macOS
-        logger.debug("macOS: 텍스트 붙여넣기")
-        _mac_type_text(text)
-        time.sleep(0.1)
-        # Press Enter (key code 36)
-        logger.debug("macOS: Enter 키 전송")
-        _mac_key_code(36)
-        time.sleep(0.1)
-    else:
-        # Use pynput on Windows/Linux
-        _keyboard.type(text)
-        time.sleep(0.1)
-        _keyboard.press(Key.enter)
-        _keyboard.release(Key.enter)
-        time.sleep(0.1)
     logger.debug("type_to_chat() 완료")
 
 

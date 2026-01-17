@@ -4,6 +4,7 @@ from tkinter import ttk, messagebox
 from typing import Callable, Optional
 import threading
 import time
+import queue
 
 from pynput import mouse
 
@@ -25,6 +26,8 @@ class CalibrationDialog:
         self._capturing = False
         self._capture_target = None
         self._mouse_listener = None
+        self._callback_queue = queue.Queue()  # Thread-safe queue for callbacks
+        self._shutting_down = False
 
         logger.info("CalibrationDialog 열림")
         logger.debug(f"현재 좌표: output=({coords.chat_output_x}, {coords.chat_output_y}), input=({coords.chat_input_x}, {coords.chat_input_y})")
@@ -111,8 +114,9 @@ class CalibrationDialog:
         self.status_label = ttk.Label(pos_frame, text="", foreground="blue")
         self.status_label.pack(pady=5)
 
-        # Start position tracking
+        # Start position tracking and queue processing
         self._update_position()
+        self._process_queue()
 
         # Log file info
         log_frame = ttk.LabelFrame(self.dialog, text="디버그 로그", padding=10)
@@ -141,12 +145,50 @@ class CalibrationDialog:
         # Handle dialog close
         self.dialog.protocol("WM_DELETE_WINDOW", self._on_close)
 
+    def _process_queue(self) -> None:
+        """Process callbacks from background threads (MAIN THREAD ONLY)"""
+        if self._shutting_down:
+            return
+
+        try:
+            # Process all pending callbacks
+            while True:
+                try:
+                    callback = self._callback_queue.get_nowait()
+                    if callback and not self._shutting_down:
+                        try:
+                            callback()
+                        except tk.TclError:
+                            pass
+                except queue.Empty:
+                    break
+
+            # Schedule next queue check
+            if not self._shutting_down:
+                self.dialog.after(50, self._process_queue)
+        except tk.TclError:
+            pass
+
+    def _safe_after(self, callback) -> None:
+        """Queue a callback to be executed on the main thread (thread-safe)"""
+        if self._shutting_down:
+            return
+        try:
+            self._callback_queue.put_nowait(callback)
+        except queue.Full:
+            pass
+
     def _update_position(self) -> None:
         """Update current mouse position display"""
+        if self._shutting_down:
+            return
         try:
             x, y = get_position()
             self.pos_label.config(text=f"X: {x}, Y: {y}")
-            self.dialog.after(50, self._update_position)
+            if not self._shutting_down:
+                self.dialog.after(50, self._update_position)
+        except tk.TclError:
+            pass
         except Exception as e:
             logger.error(f"마우스 위치 업데이트 실패: {e}")
 
@@ -169,9 +211,10 @@ class CalibrationDialog:
                 logger.info(f"클릭 감지: x={x}, y={y}, button={button}")
                 self._capturing = False
 
-                # Update in main thread
-                self.dialog.after(0, lambda: self._set_coords(target, x, y))
-                self.dialog.after(0, lambda: self.status_label.config(
+                # Update in main thread using thread-safe queue
+                # NEVER call tkinter methods (including after()) from background threads
+                self._safe_after(lambda: self._set_coords(target, x, y))
+                self._safe_after(lambda: self.status_label.config(
                     text=f"✅ {target_name} 좌표 설정: ({x}, {y})"
                 ))
 
@@ -189,7 +232,8 @@ class CalibrationDialog:
                 self._capturing = False
                 if self._mouse_listener:
                     self._mouse_listener.stop()
-                self.status_label.config(text="⚠️ 타임아웃 - 다시 시도해주세요")
+                # Use thread-safe queue for tkinter updates
+                self._safe_after(lambda: self.status_label.config(text="⚠️ 타임아웃 - 다시 시도해주세요"))
 
         threading.Timer(10.0, timeout).start()
 
@@ -295,9 +339,12 @@ class CalibrationDialog:
         """Handle dialog close"""
         logger.info("CalibrationDialog 닫힘")
 
+        # Set shutdown flag first to prevent callbacks
+        self._shutting_down = True
+        self._capturing = False
+
         # Stop mouse listener if running
         if self._mouse_listener:
             self._mouse_listener.stop()
 
-        self._capturing = False
         self.dialog.destroy()
