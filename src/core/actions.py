@@ -100,7 +100,7 @@ def use_protection(coords: Coordinates = None, settings: Settings = None) -> Non
     time.sleep(settings.action_delay)
 
 
-def ㅊcheck_status(coords: Coordinates = None, settings: Settings = None, y_offset: int = 0) -> str:
+def check_status(coords: Coordinates = None, settings: Settings = None, y_offset: int = 0) -> str:
     """
     Check current status by reading chat.
 
