@@ -3,7 +3,7 @@ import sys
 import time
 import subprocess
 import pyperclip
-from pynput.mouse import Controller as MouseController, Button
+from .mouse import click_at, move_to
 from ..config.coordinates import Coordinates, DEFAULT_COORDINATES
 from ..utils.logger import get_logger
 
@@ -12,9 +12,6 @@ logger = get_logger(__name__)
 
 # Platform detection
 _IS_MAC = sys.platform == "darwin"
-
-# pynput mouse controller (works on all platforms including background threads)
-_mouse = MouseController()
 
 # pynput keyboard controller - ONLY on non-Mac platforms
 # macOS has thread safety issues with pynput keyboard in background threads
@@ -240,12 +237,10 @@ def copy_chat_output(coords: Coordinates = None, y_offset: int = 0) -> str:
             return ""
 
         # Click on chat output area (with y_offset)
-        click_x = coords.chat_output_x
-        click_y = coords.chat_output_y + y_offset
-        logger.debug(f"[MOUSE] 채팅 출력 영역 클릭: ({click_x}, {click_y}) [y_offset={y_offset}]")
-        _mouse.position = (click_x, click_y)
-        time.sleep(0.1)
-        _mouse.click(Button.left)
+        output_x = coords.chat_output_x
+        output_y = coords.chat_output_y + y_offset
+        logger.debug(f"[MOUSE] 채팅 출력 영역 클릭: ({output_x}, {output_y}) [y_offset={y_offset}]")
+        click_at(output_x, output_y)
         time.sleep(0.2)
 
         # Use AppleScript for Select All + Copy (thread-safe)
@@ -259,16 +254,14 @@ def copy_chat_output(coords: Coordinates = None, y_offset: int = 0) -> str:
         return result
 
     else:
-        # Windows/Linux: Use pynput keyboard
+        # Windows/Linux: Use pynput keyboard with SendInput mouse
         modifier_key = Key.ctrl
 
         # Click on chat output area (with y_offset)
-        click_x = coords.chat_output_x
-        click_y = coords.chat_output_y + y_offset
-        logger.debug(f"[MOUSE] 채팅 출력 영역 클릭: ({click_x}, {click_y}) [y_offset={y_offset}]")
-        _mouse.position = (click_x, click_y)
-        time.sleep(0.1)
-        _mouse.click(Button.left)
+        output_x = coords.chat_output_x
+        output_y = coords.chat_output_y + y_offset
+        logger.debug(f"[MOUSE] 채팅 출력 영역 클릭: ({output_x}, {output_y}) [y_offset={y_offset}]")
+        click_at(output_x, output_y)
         time.sleep(0.2)
 
         # Select All (Ctrl+A)
@@ -314,9 +307,7 @@ def type_to_chat(text: str, coords: Coordinates = None) -> None:
 
         # Click on chat input area
         logger.debug(f"[MOUSE] 채팅 입력 영역 클릭: ({coords.chat_input_x}, {coords.chat_input_y})")
-        _mouse.position = (coords.chat_input_x, coords.chat_input_y)
-        time.sleep(0.1)
-        _mouse.click(Button.left)
+        click_at(coords.chat_input_x, coords.chat_input_y)
         time.sleep(0.2)
 
         # Use AppleScript for paste + send (thread-safe)
@@ -324,14 +315,12 @@ def type_to_chat(text: str, coords: Coordinates = None) -> None:
         logger.debug("type_to_chat() 완료")
 
     else:
-        # Windows/Linux: Use pynput keyboard
+        # Windows/Linux: Use pynput keyboard with SendInput mouse
         modifier_key = Key.ctrl
 
         # Click on chat input area
         logger.debug(f"[MOUSE] 채팅 입력 영역 클릭: ({coords.chat_input_x}, {coords.chat_input_y})")
-        _mouse.position = (coords.chat_input_x, coords.chat_input_y)
-        time.sleep(0.1)
-        _mouse.click(Button.left)
+        click_at(coords.chat_input_x, coords.chat_input_y)
         time.sleep(0.2)
 
         # Split text: type "/" directly, paste Korean part separately
