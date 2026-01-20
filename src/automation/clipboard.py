@@ -4,6 +4,7 @@ import time
 import subprocess
 import pyperclip
 from .mouse import click_at, move_to
+from . import keyboard as kb
 from ..config.coordinates import Coordinates, DEFAULT_COORDINATES
 from ..utils.logger import get_logger
 
@@ -12,18 +13,7 @@ logger = get_logger(__name__)
 
 # Platform detection
 _IS_MAC = sys.platform == "darwin"
-
-# pynput keyboard controller - ONLY on non-Mac platforms
-# macOS has thread safety issues with pynput keyboard in background threads
-# which causes NSApplication threading crashes
-if not _IS_MAC:
-    from pynput.keyboard import Controller as KeyboardController, Key
-    _keyboard = KeyboardController()
-else:
-    # On macOS, we use AppleScript for keyboard operations (defined below)
-    # No pynput keyboard imports to avoid PyObjC/AppKit thread safety issues
-    _keyboard = None
-    Key = None  # Not used on macOS
+_IS_WINDOWS = sys.platform == "win32"
 
 
 def _mac_activate_app(app_name: str = "KakaoTalk") -> bool:
@@ -254,8 +244,7 @@ def copy_chat_output(coords: Coordinates = None, y_offset: int = 0) -> str:
         return result
 
     else:
-        # Windows/Linux: Use pynput keyboard with SendInput mouse
-        modifier_key = Key.ctrl
+        # Windows/Linux: Use keyboard module with SendInput API
 
         # Click on chat output area (with y_offset)
         output_x = coords.chat_output_x
@@ -265,17 +254,13 @@ def copy_chat_output(coords: Coordinates = None, y_offset: int = 0) -> str:
         time.sleep(0.2)
 
         # Select All (Ctrl+A)
-        logger.debug(f"[KEYBOARD] 전체 선택: Ctrl+A (modifier={modifier_key})")
-        with _keyboard.pressed(modifier_key):
-            _keyboard.press('a')
-            _keyboard.release('a')
+        logger.debug("[KEYBOARD] 전체 선택: Ctrl+A")
+        kb.select_all()
         time.sleep(0.15)
 
         # Copy (Ctrl+C)
-        logger.debug(f"[KEYBOARD] 복사: Ctrl+C (modifier={modifier_key})")
-        with _keyboard.pressed(modifier_key):
-            _keyboard.press('c')
-            _keyboard.release('c')
+        logger.debug("[KEYBOARD] 복사: Ctrl+C")
+        kb.copy()
         time.sleep(0.2)
 
         # Get clipboard contents
@@ -315,8 +300,7 @@ def type_to_chat(text: str, coords: Coordinates = None) -> None:
         logger.debug("type_to_chat() 완료")
 
     else:
-        # Windows/Linux: Use pynput keyboard with SendInput mouse
-        modifier_key = Key.ctrl
+        # Windows/Linux: Use keyboard module with SendInput API
 
         # Click on chat input area
         logger.debug(f"[MOUSE] 채팅 입력 영역 클릭: ({coords.chat_input_x}, {coords.chat_input_y})")
@@ -327,7 +311,7 @@ def type_to_chat(text: str, coords: Coordinates = None) -> None:
         if text.startswith("/"):
             # Type "/" directly with prefix delay
             logger.debug("[KEYBOARD] '/' 직접 입력 (슬래시 딜레이 0.3초)")
-            _keyboard.type("/")
+            kb.type_text("/")
             time.sleep(0.3)  # Slash delay - prevents command not being recognized
 
             # Paste Korean part via clipboard
@@ -346,10 +330,8 @@ def type_to_chat(text: str, coords: Coordinates = None) -> None:
                     time.sleep(0.2)
 
                 # Paste (Ctrl+V)
-                logger.debug(f"[KEYBOARD] 붙여넣기: Ctrl+V (modifier={modifier_key})")
-                with _keyboard.pressed(modifier_key):
-                    _keyboard.press('v')
-                    _keyboard.release('v')
+                logger.debug("[KEYBOARD] 붙여넣기: Ctrl+V")
+                kb.paste()
                 time.sleep(0.3)  # Wait after paste before Enter
         else:
             # No slash prefix - paste entire text
@@ -358,19 +340,15 @@ def type_to_chat(text: str, coords: Coordinates = None) -> None:
             time.sleep(0.1)
 
             # Paste (Ctrl+V)
-            logger.debug(f"[KEYBOARD] 붙여넣기: Ctrl+V (modifier={modifier_key})")
-            with _keyboard.pressed(modifier_key):
-                _keyboard.press('v')
-                _keyboard.release('v')
+            logger.debug("[KEYBOARD] 붙여넣기: Ctrl+V")
+            kb.paste()
             time.sleep(0.3)  # Wait after paste before Enter
 
         # Press Enter twice - required for KakaoTalk
         logger.debug("[KEYBOARD] Enter 키 전송 (2회)")
-        _keyboard.press(Key.enter)
-        _keyboard.release(Key.enter)
+        kb.press_key('enter')
         time.sleep(0.1)
-        _keyboard.press(Key.enter)
-        _keyboard.release(Key.enter)
+        kb.press_key('enter')
         time.sleep(0.1)
 
         logger.debug("type_to_chat() 완료")
